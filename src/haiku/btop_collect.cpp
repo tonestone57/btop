@@ -21,6 +21,7 @@ tab-size = 4
 #include <fs_info.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <stdlib.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -57,18 +58,14 @@ namespace Cpu {
 	vector<long long> core_old_total;
 	cpu_info current_cpu;
 	string cpuName, cpuHz;
-	vector<string> available_fields = {"total"};
+	vector<string> available_fields = {"total", "user", "kernel", "idle"};
 	vector<string> available_sensors = {"Auto"};
 	std::unordered_map<int, int> core_mapping;
 	tuple<int, float, long, string> current_bat;
 	std::optional<std::string> container_engine;
 
 	string get_cpuName() {
-		system_info info;
-		if (get_system_info(&info) == B_OK) {
-			return "Haiku CPU";
-		}
-		return "Unknown";
+		return "Haiku CPU";
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -82,11 +79,10 @@ namespace Cpu {
 			current_cpu.load_avg.fill(0.0);
 		}
 
-		long long global_active = 0;
 		long long now = system_time();
+		long long global_active = 0;
 
 		std::vector<::cpu_info> cpu_infos(Shared::coreCount);
-		// Note: get_cpu_info is available in Haiku's OS.h
 		if (get_cpu_info(0, Shared::coreCount, cpu_infos.data()) == B_OK) {
 			for (int i = 0; i < Shared::coreCount; i++) {
 				long long active = cpu_infos[i].active_time;
@@ -226,7 +222,7 @@ namespace Net {
 		auto new_timestamp = time_ms();
 
 		if (!no_update) {
-			IfAddrsPtr if_addrs{};
+			Net::IfAddrsPtr if_addrs{};
 			if (if_addrs.get_status() != 0) return empty_net;
 
 			interfaces.clear();
@@ -317,8 +313,9 @@ namespace Proc {
 		if (p_info == procs.end()) return;
 		detailed.entry = *p_info;
 
-		if (not Config::getB("proc_per_core")) detailed.entry.cpu_p *= Shared::coreCount;
-		detailed.cpu_percent.push_back(clamp((long long)round(detailed.entry.cpu_p), 0ll, 100ll));
+		double usage = detailed.entry.cpu_p;
+		if (not Config::getB("proc_per_core")) usage *= Shared::coreCount;
+		detailed.cpu_percent.push_back(clamp((long long)round(usage), 0ll, 100ll));
 		while (detailed.cpu_percent.size() > (size_t)width) detailed.cpu_percent.pop_front();
 
 		detailed.status = "Running";
@@ -352,11 +349,13 @@ namespace Proc {
 		while (get_next_team_info(&team_cookie, &ti) == B_OK) {
 			proc_info pi;
 			pi.pid = ti.team;
+			// Note: Parent team ID is not available in public Haiku team_info.
 			pi.ppid = 0;
 
 			string args = ti.args;
 			size_t space = args.find(' ');
-			pi.name = (space == string::npos) ? fs::path(args).filename().string() : fs::path(args.substr(0, space)).filename().string();
+			string proc_path = (space == string::npos) ? args : args.substr(0, space);
+			pi.name = fs::path(proc_path).filename().string();
 			pi.cmd = args;
 			pi.state = 'R';
 
@@ -381,13 +380,13 @@ namespace Proc {
 				bigtime_t diff_period = now - old.timestamp;
 				if (diff_period > 0) {
 					double usage = (double)diff_time * 100 / diff_period;
-					if (!per_core) usage /= Shared::coreCount;
+					if (per_core) usage *= Shared::coreCount;
 					pi.cpu_p = clamp(usage, 0.0, 100.0 * Shared::coreCount);
 				}
 			}
 			old_proc_times[pi.pid] = {team_user_time, team_kernel_time, now};
 
-			// Memory usage (improved calculation including areas)
+			// Memory usage: resident set size by summing memory areas
 			pi.mem = 0;
 			ssize_t area_cookie = 0;
 			area_info ai;
