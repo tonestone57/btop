@@ -188,9 +188,9 @@ ifdef DEBUG
 	override OPTFLAGS := -O0 -g
 endif
 
-SOURCES	:= $(sort $(shell find $(SRCDIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
+SOURCES	:= $(sort $(shell find $(SRCDIR) -maxdepth 1 -type f -name "*.$(SRCEXT)"))
 
-SOURCES += $(sort $(shell find $(SRCDIR)/$(PLATFORM_DIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
+SOURCES += $(sort $(shell find $(SRCDIR)/$(PLATFORM_DIR) -maxdepth 1 -type f -name "*.$(SRCEXT)"))
 
 OBJECTS	:= $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.$(OBJEXT)))
 
