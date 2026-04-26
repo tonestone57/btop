@@ -79,7 +79,7 @@ namespace Cpu {
 			current_cpu.load_avg.fill(0.0);
 		}
 
-		std::vector<cpu_info_t> cpu_infos(Shared::coreCount);
+		std::vector<::cpu_info> cpu_infos(Shared::coreCount);
 		if (get_cpu_info(0, Shared::coreCount, cpu_infos.data()) == B_OK) {
 			long long total_active = 0;
 			long long total_total = system_time() * Shared::coreCount;
@@ -273,6 +273,27 @@ namespace Proc {
 	bool is_tree_mode;
 	detail_container detailed;
 
+	static void _collect_details(const size_t pid, vector<proc_info>& procs) {
+		if (pid != detailed.last_pid) {
+			detailed = {};
+			detailed.last_pid = pid;
+		}
+
+		auto p_info = std::find_if(procs.begin(), procs.end(), [pid](const auto& a) { return a.pid == pid; });
+		if (p_info == procs.end()) return;
+		detailed.entry = *p_info;
+
+		if (not Config::getB("proc_per_core")) detailed.entry.cpu_p *= Shared::coreCount;
+		detailed.cpu_percent.push_back(clamp((long long)round(detailed.entry.cpu_p), 0ll, 100ll));
+		while (detailed.cpu_percent.size() > (size_t)width) detailed.cpu_percent.pop_front();
+
+		detailed.status = "Running";
+		detailed.memory = floating_humanizer(detailed.entry.mem);
+
+		detailed.mem_bytes.push_back(detailed.entry.mem);
+		while (detailed.mem_bytes.size() > (size_t)width) detailed.mem_bytes.pop_front();
+	}
+
 	struct proc_times {
 		bigtime_t user_time;
 		bigtime_t kernel_time;
@@ -281,8 +302,13 @@ namespace Proc {
 	std::unordered_map<size_t, proc_times> old_proc_times;
 
 	auto collect(bool no_update) -> vector<proc_info>& {
-		if (Runner::stopping or (no_update and not current_procs.empty()))
+		const auto show_detailed = Config::getB("show_detailed");
+		const size_t detailed_pid_cfg = Config::getI("detailed_pid");
+
+		if (Runner::stopping or (no_update and not current_procs.empty())) {
+			if (show_detailed and detailed_pid_cfg != detailed.last_pid) _collect_details(detailed_pid_cfg, current_procs);
 			return current_procs;
+		}
 
 		current_procs.clear();
 		int32 team_cookie = 0;
@@ -325,6 +351,10 @@ namespace Proc {
 			current_procs.push_back(pi);
 		}
 
+		if (show_detailed) {
+			_collect_details(detailed_pid_cfg, current_procs);
+		}
+
 		numpids = current_procs.size();
 		return current_procs;
 	}
@@ -353,11 +383,13 @@ namespace Shared {
 		Cpu::core_old_total.insert(Cpu::core_old_total.begin(), coreCount, 0);
 
 		// Initialize Mem maps
-		for (const auto& name : Mem::mem_names) Mem::current_mem.stats[name] = 0;
-		for (const auto& name : Mem::mem_names) Mem::current_mem.percent[name] = {};
+		for (const auto& name : Mem::mem_names) {
+			Mem::current_mem.stats[name] = 0;
+			Mem::current_mem.percent[name] = {};
+		}
 		for (const auto& name : Mem::swap_names) {
-			Mem::current_mem.stats["swap_" + name] = 0;
-			Mem::current_mem.percent["swap_" + name] = {};
+			Mem::current_mem.stats[name] = 0;
+			Mem::current_mem.percent[name] = {};
 		}
 		Mem::current_mem.stats["swap_total"] = 0;
 		Mem::current_mem.percent["swap_total"] = {};
