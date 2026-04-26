@@ -1022,29 +1022,35 @@ namespace Cpu {
         return value;
     }
 
-    static constexpr auto detect_active_cpus() {
+    static auto detect_active_cpus() {
         auto stream = std::ifstream { "/sys/fs/cgroup/cpuset.cpus.effective" };
         auto buf = std::string { std::istreambuf_iterator<char> { stream }, {} };
 
         if (buf.empty()) {
-            return std::views::iota(0, Shared::coreCount) | std::ranges::to<std::vector<std::int32_t>>();
+            auto iota_view = std::views::iota(0, (int)Shared::coreCount);
+            std::vector<std::int32_t> out;
+            for (auto&& i : iota_view) out.push_back(i);
+            return out;
         }
 
-        return buf | std::views::split(',') | std::views::transform([](auto&& range) -> auto {
+        auto transformed = buf | std::views::split(',') | std::views::transform([](auto&& range) -> auto {
                    auto view = std::string_view { range };
                    auto dash = view.find('-');
 
                    if (dash == std::string_view::npos) {
                        // Single CPU, return iota of single element
-                       auto value = to_int(view);
+                       auto value = (int)to_int(view);
                        return std::views::iota(value, value + 1);
                    }
 
-                   auto start = to_int(view.substr(0, dash));
-                   auto end = to_int(view.substr(dash + 1));
+                   auto start = (int)to_int(view.substr(0, dash));
+                   auto end = (int)to_int(view.substr(dash + 1));
                    return std::views::iota(start, end + 1);
                }) |
-               std::views::join | std::ranges::to<std::vector<std::int32_t>>();
+               std::views::join;
+        std::vector<std::int32_t> out;
+        for (auto&& i : transformed) out.push_back(i);
+        return out;
     }
 
 	auto collect(bool no_update) -> cpu_info& {

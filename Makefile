@@ -132,6 +132,11 @@ else ifeq ($(PLATFORM_LC),netbsd)
 	override ADDFLAGS += -lkvm -lprop
 	export MAKE = gmake
 	SU_GROUP := wheel
+else ifeq ($(PLATFORM_LC),haiku)
+	PLATFORM_DIR := haiku
+	THREADS := $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+	override ADDFLAGS += -lnetwork
+	SU_GROUP := root
 else
 $(error $(shell printf "\033[1;91mERROR: \033[97mUnsupported platform ($(PLATFORM))\033[0m"))
 endif

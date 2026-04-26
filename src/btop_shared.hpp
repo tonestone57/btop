@@ -40,6 +40,8 @@ tab-size = 4
 
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 # include <kvm.h>
+#elif defined(__HAIKU__)
+# include <OS.h>
 #endif
 
 using std::array;
