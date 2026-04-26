@@ -220,7 +220,7 @@ namespace Net {
 		auto new_timestamp = time_ms();
 
 		if (!no_update) {
-			IfAddrsPtr if_addrs{};
+			Net::IfAddrsPtr if_addrs{};
 			if (if_addrs.get_status() != 0) return empty_net;
 
 			interfaces.clear();
@@ -347,7 +347,13 @@ namespace Proc {
 			}
 			old_proc_times[pi.pid] = {team_user_time, team_kernel_time, now};
 
-			pi.mem = (uint64_t)ti.used_bss + ti.used_data + ti.used_text;
+			// Memory usage (improved calculation including areas)
+			pi.mem = 0;
+			ssize_t area_cookie = 0;
+			area_info ai;
+			while (get_next_area_info(ti.team, &area_cookie, &ai) == B_OK) {
+				pi.mem += ai.ram_size;
+			}
 			current_procs.push_back(pi);
 		}
 
