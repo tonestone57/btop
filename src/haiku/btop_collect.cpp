@@ -35,7 +35,7 @@ tab-size = 4
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#include <sys/sockio.h>
+#include <sys/ioctl.h>
 
 #include "../btop_config.hpp"
 #include "../btop_log.hpp"
@@ -66,7 +66,6 @@ namespace Cpu {
 	string get_cpuName() {
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
-			// Haiku doesn't provide a direct CPU model name string in system_info
 			return "Haiku CPU";
 		}
 		return "Unknown";
@@ -83,52 +82,42 @@ namespace Cpu {
 			current_cpu.load_avg.fill(0.0);
 		}
 
-		// Haiku's cpu_info struct
-		struct haiku_cpu_info {
-			bigtime_t active_time;
-			bool enabled;
-		};
-		std::vector<haiku_cpu_info> cpu_infos(Shared::coreCount);
-		// Note: get_cpu_info is an internal but commonly used Haiku API.
-		// If it's not available, we'd fallback to global system_info.
-		// For the sake of this port, we assume standard Haiku environment.
+		long long global_active = 0;
+		long long now = system_time();
 
-		long long total_active = 0;
-		long long total_total = system_time() * Shared::coreCount;
+		std::vector<::cpu_info> cpu_infos(Shared::coreCount);
+		// Note: get_cpu_info is available in Haiku's OS.h
+		if (get_cpu_info(0, Shared::coreCount, cpu_infos.data()) == B_OK) {
+			for (int i = 0; i < Shared::coreCount; i++) {
+				long long active = cpu_infos[i].active_time;
+				long long total = now;
+				long long diff_active = active - core_old_active.at(i);
+				long long diff_total = total - core_old_total.at(i);
 
-		for (int i = 0; i < Shared::coreCount; i++) {
-			// In btop, we want per-core stats.
-			// Since get_cpu_info might not be available or stable,
-			// we'll use 0 as placeholder for per-core if we can't get it.
-			long long active = 0;
-			long long total = system_time();
-			long long diff_active = active - core_old_active.at(i);
-			long long diff_total = total - core_old_total.at(i);
+				core_old_active.at(i) = active;
+				core_old_total.at(i) = total;
 
-			core_old_active.at(i) = active;
-			core_old_total.at(i) = total;
-
-			if (diff_total > 0) {
-				current_cpu.core_percent.at(i).push_back(clamp((long long)round((double)diff_active * 100 / diff_total), 0ll, 100ll));
-			} else {
-				current_cpu.core_percent.at(i).push_back(0);
+				if (diff_total > 0) {
+					current_cpu.core_percent.at(i).push_back(clamp((long long)round((double)diff_active * 100 / diff_total), 0ll, 100ll));
+				} else {
+					current_cpu.core_percent.at(i).push_back(0);
+				}
+				if (current_cpu.core_percent.at(i).size() > 40) current_cpu.core_percent.at(i).pop_front();
+				global_active += active;
 			}
-			if (current_cpu.core_percent.at(i).size() > 40) current_cpu.core_percent.at(i).pop_front();
-			total_active += active;
 		}
 
-		// Global CPU usage
-		static long long old_total_active = 0;
-		static long long old_total_total = 0;
-		// We use system_info for global state if possible
-		total_active = 0; // Fallback or improved logic needed
-		long long diff_total_active = total_active - old_total_active;
-		long long diff_total_total = total_total - old_total_total;
-		old_total_active = total_active;
-		old_total_total = total_total;
+		static long long old_global_active = 0;
+		static long long old_global_total = 0;
+		long long current_global_total = now * Shared::coreCount;
 
-		if (diff_total_total > 0) {
-			current_cpu.cpu_percent.at("total").push_back(clamp((long long)round((double)diff_total_active * 100 / diff_total_total), 0ll, 100ll));
+		long long diff_global_active = global_active - old_global_active;
+		long long diff_global_total = current_global_total - old_global_total;
+		old_global_active = global_active;
+		old_global_total = current_global_total;
+
+		if (diff_global_total > 0) {
+			current_cpu.cpu_percent.at("total").push_back(clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll));
 		} else {
 			current_cpu.cpu_percent.at("total").push_back(0);
 		}
@@ -349,6 +338,7 @@ namespace Proc {
 	auto collect(bool no_update) -> vector<proc_info>& {
 		const auto show_detailed = Config::getB("show_detailed");
 		const size_t detailed_pid_cfg = Config::getI("detailed_pid");
+		const bool per_core = Config::getB("proc_per_core");
 
 		if (Runner::stopping or (no_update and not current_procs.empty())) {
 			if (show_detailed and detailed_pid_cfg != detailed.last_pid) _collect_details(detailed_pid_cfg, current_procs);
@@ -362,14 +352,12 @@ namespace Proc {
 		while (get_next_team_info(&team_cookie, &ti) == B_OK) {
 			proc_info pi;
 			pi.pid = ti.team;
-			// ti.parent seems to be available in Haiku's team_info
-			// but we'll check if we need to use a different field.
-			// Standard Haiku team_info has 'team' but no 'parent'.
-			// However, some versions or internal structures might.
-			// As a placeholder, we use 0.
 			pi.ppid = 0;
-			pi.name = fs::path(ti.args).filename();
-			pi.cmd = ti.args;
+
+			string args = ti.args;
+			size_t space = args.find(' ');
+			pi.name = (space == string::npos) ? fs::path(args).filename().string() : fs::path(args.substr(0, space)).filename().string();
+			pi.cmd = args;
 			pi.state = 'R';
 
 			struct passwd* pwd = getpwuid(ti.uid);
@@ -392,7 +380,9 @@ namespace Proc {
 				bigtime_t diff_time = (team_user_time + team_kernel_time) - (old.user_time + old.kernel_time);
 				bigtime_t diff_period = now - old.timestamp;
 				if (diff_period > 0) {
-					pi.cpu_p = clamp((double)diff_time * 100 / diff_period, 0.0, 100.0 * Shared::coreCount);
+					double usage = (double)diff_time * 100 / diff_period;
+					if (!per_core) usage /= Shared::coreCount;
+					pi.cpu_p = clamp(usage, 0.0, 100.0 * Shared::coreCount);
 				}
 			}
 			old_proc_times[pi.pid] = {team_user_time, team_kernel_time, now};
@@ -432,6 +422,9 @@ namespace Shared {
 
 		// Initialize Cpu maps
 		Cpu::current_cpu.cpu_percent["total"] = {};
+		Cpu::current_cpu.cpu_percent["user"] = {};
+		Cpu::current_cpu.cpu_percent["kernel"] = {};
+		Cpu::current_cpu.cpu_percent["idle"] = {};
 
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), coreCount, {});
 		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), coreCount + 1, {});
