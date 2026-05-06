@@ -418,11 +418,11 @@ namespace Proc {
 			pi.mem = 0;
 			ssize_t area_cookie = 0;
 			area_info ai;
-			while (get_next_area_info(ti.team, &area_cookie, &ai) == B_OK) {
+			status_t area_status;
+			while ((area_status = get_next_area_info(ti.team, &area_cookie, &ai)) == B_OK) {
 				pi.mem += ai.ram_size;
 			}
-			// Note: area_cookie is used by get_next_area_info for iteration
-			if (area_cookie < 0 && area_cookie != B_BAD_VALUE && area_cookie != B_BAD_TEAM_ID)
+			if (area_status != B_BAD_VALUE && area_status != B_BAD_TEAM_ID)
 				Logger::debug("Proc::collect() -> get_next_area_info failed for team %d", static_cast<int>(ti.team));
 			current_procs.push_back(pi);
 		}
