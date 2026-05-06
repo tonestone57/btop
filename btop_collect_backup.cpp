@@ -68,10 +68,7 @@ namespace Cpu {
 	string get_cpuName() {
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
-			if (info.cpu_type >= B_CPU_INTEL_x86_586 && info.cpu_type < B_CPU_AMD_x86_64)
-				return "Intel x86 CPU";
-			if (info.cpu_type >= B_CPU_AMD_x86_64)
-				return "AMD/Intel x64 CPU";
+			return info.cpu_type == B_CPU_X86_64 ? "x86_64 CPU" : "Haiku CPU";
 		}
 		return "Haiku CPU";
 	}
@@ -121,18 +118,26 @@ namespace Cpu {
 		long long diff_global_total = current_global_total - old_global_total;
 		old_global_active = global_active;
 		old_global_total = current_global_total;
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
 
 		if (diff_global_total > 0) {
-			long long total_p = clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll);
-			current_cpu.cpu_percent.at("total").push_back(total_p);
-			current_cpu.cpu_percent.at("idle").push_back(100 - total_p);
 			current_cpu.cpu_percent.at("user").push_back(0);
 			current_cpu.cpu_percent.at("kernel").push_back(0);
+			long long total_p = clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll);
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
+			current_cpu.cpu_percent.at("total").push_back(total_p);
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
+			current_cpu.cpu_percent.at("idle").push_back(100 - total_p);
 		} else {
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
 			current_cpu.cpu_percent.at("total").push_back(0);
 			current_cpu.cpu_percent.at("idle").push_back(100);
-			current_cpu.cpu_percent.at("user").push_back(0);
-			current_cpu.cpu_percent.at("kernel").push_back(0);
 		}
 
 		while (current_cpu.cpu_percent.at("total").size() > (size_t)width * 2) {
@@ -219,7 +224,7 @@ namespace Mem {
 					current_mem.disks[di.name] = di;
 					current_mem.disks_order.push_back(di.name);
 				} else {
-					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev %d", (int)dev);
+					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev %ld", dev);
 				}
 			}
 		}
@@ -369,7 +374,6 @@ namespace Proc {
 		current_procs.clear();
 		static std::unordered_set<size_t> found_pids;
 		found_pids.clear();
-
 		int32 team_cookie = 0;
 		team_info ti;
 		bigtime_t now = system_time();
@@ -406,10 +410,12 @@ namespace Proc {
 			if (old_proc_times.contains(pi.pid)) {
 				auto& old = old_proc_times.at(pi.pid);
 				bigtime_t diff_time = (team_user_time + team_kernel_time) - (old.user_time + old.kernel_time);
-				bigtime_t diff_period = now - old.timestamp;
-				if (diff_period > 0) {
 					const int cmult = (per_core) ? Shared::coreCount : 1;
-					pi.cpu_p = clamp(round(cmult * 1000.0 * diff_time / (diff_period * Shared::coreCount)) / 10.0, 0.0, 100.0 * Shared::coreCount);
+					pi.cpu_p = clamp(round(cmult * 10.0 * diff_time / diff_period) / 10.0, 0.0, 100.0 * Shared::coreCount);
+					double usage = (double)diff_time * 100 / diff_period;
+					const int cmult = (per_core) ? Shared::coreCount : 1;
+					pi.cpu_p = clamp(round(cmult * 10.0 * diff_time / diff_period) / 10.0, 0.0, 100.0 * Shared::coreCount);
+					pi.cpu_p = clamp(usage, 0.0, 100.0 * Shared::coreCount);
 				}
 			}
 			old_proc_times[pi.pid] = {team_user_time, team_kernel_time, now};
@@ -422,7 +428,7 @@ namespace Proc {
 				pi.mem += ai.ram_size;
 			}
 			if (area_cookie < 0 and area_cookie != B_BAD_VALUE and area_cookie != B_BAD_TEAM_ID) {
-				Logger::debug("Proc::collect() -> get_next_area_info() failed for team %d with error %d", (int)ti.team, (int)area_cookie);
+				Logger::debug("Proc::collect() -> get_next_area_info() failed for team %ld with error %ld", ti.team, area_cookie);
 			}
 			current_procs.push_back(pi);
 		}
