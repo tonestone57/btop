@@ -21,6 +21,8 @@ tab-size = 4
 #include <fs_info.h>
 #include <unistd.h>
 #include <unordered_set>
+#include <filesystem>
+#include <utility>
 #include <pwd.h>
 #include <stdlib.h>
 #include <string>
@@ -193,8 +195,9 @@ namespace Mem {
 			current_mem.stats["free"] = (uint64_t)info.free_pages * B_PAGE_SIZE;
 		}
 
+		uint64_t totalMem = get_totalMem();
 		for (const auto& name : mem_names) {
-			current_mem.percent[name].push_back(round((double)current_mem.stats[name] * 100 / get_totalMem()));
+			current_mem.percent[name].push_back(totalMem > 0 ? round((double)current_mem.stats[name] * 100 / totalMem) : 0);
 			while (current_mem.percent[name].size() > (size_t)width * 2) current_mem.percent[name].pop_front();
 		}
 
@@ -422,8 +425,8 @@ namespace Proc {
 			while ((area_status = get_next_area_info(ti.team, &area_cookie, &ai)) == B_OK) {
 				pi.mem += ai.ram_size;
 			}
-			if (area_status != B_BAD_VALUE && area_status != B_BAD_TEAM_ID)
-				Logger::debug("Proc::collect() -> get_next_area_info failed for team {}", static_cast<int>(ti.team));
+			if (area_status != B_OK && area_status != B_BAD_VALUE && area_status != B_BAD_TEAM_ID)
+				Logger::debug("Proc::collect() -> get_next_area_info failed for team {} with error {}", static_cast<int>(ti.team), static_cast<int>(area_status));
 			current_procs.push_back(pi);
 		}
 
