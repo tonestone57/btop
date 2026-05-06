@@ -20,6 +20,9 @@ tab-size = 4
 #include <OS.h>
 #include <fs_info.h>
 #include <unistd.h>
+#include <unordered_set>
+#include <filesystem>
+#include <utility>
 #include <pwd.h>
 #include <stdlib.h>
 #include <string>
@@ -65,6 +68,13 @@ namespace Cpu {
 	std::optional<std::string> container_engine;
 
 	string get_cpuName() {
+		system_info info;
+		if (get_system_info(&info) == B_OK) {
+			if (info.cpu_type >= B_CPU_INTEL_x86_586 && info.cpu_type < B_CPU_AMD_x86_64)
+				return "Intel x86 CPU";
+			if (info.cpu_type >= B_CPU_AMD_x86_64)
+				return "AMD/Intel x64 CPU";
+		}
 		return "Haiku CPU";
 	}
 
@@ -83,7 +93,9 @@ namespace Cpu {
 		long long global_active = 0;
 
 		std::vector<::cpu_info> cpu_infos(Shared::coreCount);
-		if (get_cpu_info(0, Shared::coreCount, cpu_infos.data()) == B_OK) {
+		if (get_cpu_info(0, Shared::coreCount, cpu_infos.data()) != B_OK) {
+			Logger::error("Cpu::collect() -> get_cpu_info() failed");
+		} else {
 			for (int i = 0; i < Shared::coreCount; i++) {
 				long long active = cpu_infos[i].active_time;
 				long long total = now;
@@ -113,9 +125,16 @@ namespace Cpu {
 		old_global_total = current_global_total;
 
 		if (diff_global_total > 0) {
-			current_cpu.cpu_percent.at("total").push_back(clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll));
+			long long total_p = clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll);
+			current_cpu.cpu_percent.at("total").push_back(total_p);
+			current_cpu.cpu_percent.at("idle").push_back(100 - total_p);
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
 		} else {
 			current_cpu.cpu_percent.at("total").push_back(0);
+			current_cpu.cpu_percent.at("idle").push_back(100);
+			current_cpu.cpu_percent.at("user").push_back(0);
+			current_cpu.cpu_percent.at("kernel").push_back(0);
 		}
 
 		while (current_cpu.cpu_percent.at("total").size() > (size_t)width * 2) {
@@ -154,8 +173,13 @@ namespace Mem {
 	int disk_ios = 0;
 
 	uint64_t get_totalMem() {
+		static uint64_t totalMem = 0;
+		if (totalMem > 0) return totalMem;
 		system_info info;
-		if (get_system_info(&info) == B_OK) return (uint64_t)info.max_pages * B_PAGE_SIZE;
+		if (get_system_info(&info) == B_OK) {
+			totalMem = (uint64_t)info.max_pages * B_PAGE_SIZE;
+			return totalMem;
+		}
 		return 0;
 	}
 
@@ -171,8 +195,9 @@ namespace Mem {
 			current_mem.stats["free"] = (uint64_t)info.free_pages * B_PAGE_SIZE;
 		}
 
+		uint64_t totalMem = get_totalMem();
 		for (const auto& name : mem_names) {
-			current_mem.percent[name].push_back(round((double)current_mem.stats[name] * 100 / get_totalMem()));
+			current_mem.percent[name].push_back(totalMem > 0 ? round((double)current_mem.stats[name] * 100 / totalMem) : 0);
 			while (current_mem.percent[name].size() > (size_t)width * 2) current_mem.percent[name].pop_front();
 		}
 
@@ -196,6 +221,8 @@ namespace Mem {
 					}
 					current_mem.disks[di.name] = di;
 					current_mem.disks_order.push_back(di.name);
+				} else {
+					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev {}", static_cast<int>(dev));
 				}
 			}
 		}
@@ -318,7 +345,7 @@ namespace Proc {
 		detailed.cpu_percent.push_back(clamp((long long)round(usage), 0ll, 100ll));
 		while (detailed.cpu_percent.size() > (size_t)width) detailed.cpu_percent.pop_front();
 
-		detailed.status = "Running";
+		detailed.status = (proc_states.contains(detailed.entry.state)) ? proc_states.at(detailed.entry.state) : "Unknown";
 		detailed.memory = floating_humanizer(detailed.entry.mem);
 
 		detailed.mem_bytes.push_back(detailed.entry.mem);
@@ -343,12 +370,16 @@ namespace Proc {
 		}
 
 		current_procs.clear();
+		static std::unordered_set<size_t> found_pids;
+		found_pids.clear();
+
 		int32 team_cookie = 0;
 		team_info ti;
 		bigtime_t now = system_time();
 		while (get_next_team_info(&team_cookie, &ti) == B_OK) {
 			proc_info pi;
 			pi.pid = ti.team;
+			found_pids.insert(pi.pid);
 			// Note: Parent team ID is not available in public Haiku team_info.
 			pi.ppid = 0;
 
@@ -357,7 +388,7 @@ namespace Proc {
 			string proc_path = (space == string::npos) ? args : args.substr(0, space);
 			pi.name = fs::path(proc_path).filename().string();
 			pi.cmd = args;
-			pi.state = 'R';
+			pi.state = 'S';
 
 			struct passwd* pwd = getpwuid(ti.uid);
 			if (pwd) pi.user = pwd->pw_name;
@@ -372,6 +403,7 @@ namespace Proc {
 				pi.threads++;
 				team_user_time += thi.user_time;
 				team_kernel_time += thi.kernel_time;
+				if (thi.state == B_THREAD_RUNNING) pi.state = 'R';
 			}
 
 			if (old_proc_times.contains(pi.pid)) {
@@ -379,9 +411,8 @@ namespace Proc {
 				bigtime_t diff_time = (team_user_time + team_kernel_time) - (old.user_time + old.kernel_time);
 				bigtime_t diff_period = now - old.timestamp;
 				if (diff_period > 0) {
-					double usage = (double)diff_time * 100 / diff_period;
-					if (per_core) usage *= Shared::coreCount;
-					pi.cpu_p = clamp(usage, 0.0, 100.0 * Shared::coreCount);
+					const int cmult = (per_core) ? Shared::coreCount : 1;
+					pi.cpu_p = clamp(round(cmult * 1000.0 * diff_time / (diff_period * Shared::coreCount)) / 10.0, 0.0, 100.0 * Shared::coreCount);
 				}
 			}
 			old_proc_times[pi.pid] = {team_user_time, team_kernel_time, now};
@@ -390,15 +421,20 @@ namespace Proc {
 			pi.mem = 0;
 			ssize_t area_cookie = 0;
 			area_info ai;
-			while (get_next_area_info(ti.team, &area_cookie, &ai) == B_OK) {
+			status_t area_status;
+			while ((area_status = get_next_area_info(ti.team, &area_cookie, &ai)) == B_OK) {
 				pi.mem += ai.ram_size;
 			}
+			if (area_status != B_OK && area_status != B_BAD_VALUE && area_status != B_BAD_TEAM_ID)
+				Logger::debug("Proc::collect() -> get_next_area_info failed for team {} with error {}", static_cast<int>(ti.team), static_cast<int>(area_status));
 			current_procs.push_back(pi);
 		}
 
 		if (show_detailed) {
 			_collect_details(detailed_pid_cfg, current_procs);
 		}
+
+		std::erase_if(old_proc_times, [&](const auto& n) { return !found_pids.contains(n.first); });
 
 		numpids = current_procs.size();
 		return current_procs;
