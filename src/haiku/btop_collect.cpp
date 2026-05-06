@@ -219,7 +219,7 @@ namespace Mem {
 					current_mem.disks[di.name] = di;
 					current_mem.disks_order.push_back(di.name);
 				} else {
-					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev %d", static_cast<int>(dev));
+					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev {}", static_cast<int>(dev));
 				}
 			}
 		}
@@ -423,7 +423,7 @@ namespace Proc {
 				pi.mem += ai.ram_size;
 			}
 			if (area_status != B_BAD_VALUE && area_status != B_BAD_TEAM_ID)
-				Logger::debug("Proc::collect() -> get_next_area_info failed for team %d", static_cast<int>(ti.team));
+				Logger::debug("Proc::collect() -> get_next_area_info failed for team {}", static_cast<int>(ti.team));
 			current_procs.push_back(pi);
 		}
 
