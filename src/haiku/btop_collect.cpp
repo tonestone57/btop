@@ -61,7 +61,7 @@ namespace Cpu {
 	vector<long long> core_old_total;
 	cpu_info current_cpu;
 	string cpuName, cpuHz;
-	vector<string> available_fields = {"total", "user", "kernel", "idle"};
+	vector<string> available_fields = {"total", "user", "system", "idle"};
 	vector<string> available_sensors = {"Auto"};
 	std::unordered_map<int, int> core_mapping;
 	tuple<int, float, long, string> current_bat;
@@ -110,7 +110,7 @@ namespace Cpu {
 				} else {
 					current_cpu.core_percent.at(i).push_back(0);
 				}
-				if (current_cpu.core_percent.at(i).size() > 40) current_cpu.core_percent.at(i).pop_front();
+				if (current_cpu.core_percent.at(i).size() > (size_t)width) current_cpu.core_percent.at(i).pop_front();
 				global_active += active;
 			}
 		}
@@ -128,18 +128,24 @@ namespace Cpu {
 			long long total_p = clamp((long long)round((double)diff_global_active * 100 / diff_global_total), 0ll, 100ll);
 			current_cpu.cpu_percent.at("total").push_back(total_p);
 			current_cpu.cpu_percent.at("idle").push_back(100 - total_p);
-			current_cpu.cpu_percent.at("user").push_back(0);
-			current_cpu.cpu_percent.at("kernel").push_back(0);
 		} else {
 			current_cpu.cpu_percent.at("total").push_back(0);
 			current_cpu.cpu_percent.at("idle").push_back(100);
-			current_cpu.cpu_percent.at("user").push_back(0);
-			current_cpu.cpu_percent.at("kernel").push_back(0);
 		}
 
-		while (current_cpu.cpu_percent.at("total").size() > (size_t)width * 2) {
-			for (auto& [name, deque] : current_cpu.cpu_percent) {
-				if (!deque.empty()) deque.pop_front();
+		for (const auto& name : {"user", "system", "nice", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"}) {
+			current_cpu.cpu_percent.at(name).push_back(0);
+		}
+
+		for (auto& [name, deque] : current_cpu.cpu_percent) {
+			while (deque.size() > (size_t)width * 2) deque.pop_front();
+		}
+
+		if (Config::getB("check_temp")) {
+			for (int i = 0; i <= Shared::coreCount; i++) {
+				if (current_cpu.temp.size() <= (size_t)i) current_cpu.temp.push_back({});
+				current_cpu.temp.at(i).push_back(0);
+				while (current_cpu.temp.at(i).size() > 20) current_cpu.temp.at(i).pop_front();
 			}
 		}
 
@@ -189,15 +195,20 @@ namespace Mem {
 
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
-			current_mem.stats["used"] = (uint64_t)info.used_pages * B_PAGE_SIZE;
-			current_mem.stats["available"] = (uint64_t)(info.max_pages - info.used_pages) * B_PAGE_SIZE;
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
+			current_mem.stats["used"] = (uint64_t)(info.used_pages - info.cached_pages) * B_PAGE_SIZE;
 			current_mem.stats["free"] = (uint64_t)info.free_pages * B_PAGE_SIZE;
+			current_mem.stats["available"] = current_mem.stats["free"] + current_mem.stats["cached"];
 		}
 
 		uint64_t totalMem = get_totalMem();
 		for (const auto& name : mem_names) {
 			current_mem.percent[name].push_back(totalMem > 0 ? round((double)current_mem.stats[name] * 100 / totalMem) : 0);
+			while (current_mem.percent[name].size() > (size_t)width * 2) current_mem.percent[name].pop_front();
+		}
+		for (const auto& name : swap_names) {
+			if (!current_mem.percent.contains(name)) current_mem.percent[name] = {};
+			current_mem.percent[name].push_back(0);
 			while (current_mem.percent[name].size() > (size_t)width * 2) current_mem.percent[name].pop_front();
 		}
 
@@ -253,7 +264,6 @@ namespace Net {
 			if (if_addrs.get_status() != 0) return empty_net;
 
 			interfaces.clear();
-			int sock = socket(AF_INET, SOCK_DGRAM, 0);
 			for (auto* ifa = if_addrs.get(); ifa != nullptr; ifa = ifa->ifa_next) {
 				if (ifa->ifa_addr == nullptr) continue;
 				const string iface = ifa->ifa_name;
@@ -271,33 +281,38 @@ namespace Net {
 					net[iface].ipv6 = ip;
 				}
 
-				if (sock >= 0) {
-					struct ifreq ifr;
-					memset(&ifr, 0, sizeof(ifr));
-					strncpy(ifr.ifr_name, iface.c_str(), IF_NAMESIZE);
-					if (ioctl(sock, SIOCGIFSTATS, &ifr) == 0) {
-						auto& stat = net[iface].stat;
-						uint64_t rx = ifr.ifr_stats.receive_bytes;
-						uint64_t tx = ifr.ifr_stats.send_bytes;
+				if (ifa->ifa_data != nullptr) {
+					auto* ifd = (struct if_data*)ifa->ifa_data;
+					auto& stat = net[iface].stat;
+					uint64_t rx = ifd->ifi_ibytes;
+					uint64_t tx = ifd->ifi_obytes;
 
-						for (const string& dir : {"download", "upload"}) {
-							uint64_t val = (dir == "download") ? rx : tx;
-							auto& s = stat[dir];
-							if (val < s.last) s.rollover += s.last;
-							if (timestamp > 0)
-								s.speed = (val + s.rollover - s.last) * 1000 / max(1ULL, new_timestamp - timestamp);
-							if (s.speed > s.top) s.top = s.speed;
-							s.total = val + s.rollover - s.offset;
-							s.last = val;
+					for (const string& dir : {"download", "upload"}) {
+						uint64_t val = (dir == "download") ? rx : tx;
+						auto& s = stat[dir];
+						if (val < s.last) s.rollover += s.last;
+						if (timestamp > 0)
+							s.speed = (val + s.rollover - s.last) * 1000 / max(1ULL, new_timestamp - timestamp);
+						if (s.speed > s.top) s.top = s.speed;
+						s.total = val + s.rollover - s.offset;
+						s.last = val;
 
-							auto& bw = net[iface].bandwidth[dir];
-							bw.push_back(s.speed);
-							if (bw.size() > (size_t)width * 2) bw.pop_front();
-						}
+						auto& bw = net[iface].bandwidth[dir];
+						bw.push_back(s.speed);
+						if (bw.size() > (size_t)width * 2) bw.pop_front();
 					}
 				}
 			}
-			if (sock >= 0) close(sock);
+
+			if (net.size() > interfaces.size()) {
+				for (auto it = net.begin(); it != net.end();) {
+					if (not v_contains(interfaces, it->first))
+						it = net.erase(it);
+					else
+						it++;
+				}
+			}
+
 			timestamp = new_timestamp;
 		}
 
@@ -388,7 +403,6 @@ namespace Proc {
 			string proc_path = (space == string::npos) ? args : args.substr(0, space);
 			pi.name = fs::path(proc_path).filename().string();
 			pi.cmd = args;
-			pi.state = 'S';
 
 			struct passwd* pwd = getpwuid(ti.uid);
 			if (pwd) pi.user = pwd->pw_name;
@@ -397,6 +411,7 @@ namespace Proc {
 			int32 thread_cookie = 0;
 			thread_info thi;
 			pi.threads = 0;
+			pi.state = 'S';
 			bigtime_t team_user_time = 0;
 			bigtime_t team_kernel_time = 0;
 			while (get_next_thread_info(ti.team, &thread_cookie, &thi) == B_OK) {
@@ -404,6 +419,14 @@ namespace Proc {
 				team_user_time += thi.user_time;
 				team_kernel_time += thi.kernel_time;
 				if (thi.state == B_THREAD_RUNNING) pi.state = 'R';
+				else if (pi.state != 'R') {
+					switch (thi.state) {
+						case B_THREAD_READY: pi.state = 'R'; break;
+						case B_THREAD_WAITING: pi.state = (pi.state == 'S' ? 'D' : pi.state); break;
+						case B_THREAD_SUSPENDED: pi.state = (is_in(pi.state, 'S', 'D') ? 'T' : pi.state); break;
+						default: break;
+					}
+				}
 			}
 
 			if (old_proc_times.contains(pi.pid)) {
@@ -456,10 +479,9 @@ namespace Shared {
 		clk_tck = 1000000;
 
 		// Initialize Cpu maps
-		Cpu::current_cpu.cpu_percent["total"] = {};
-		Cpu::current_cpu.cpu_percent["user"] = {};
-		Cpu::current_cpu.cpu_percent["kernel"] = {};
-		Cpu::current_cpu.cpu_percent["idle"] = {};
+		for (const auto& name : {"total", "user", "system", "idle", "nice", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"}) {
+			Cpu::current_cpu.cpu_percent[name] = {};
+		}
 
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), coreCount, {});
 		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), coreCount + 1, {});
