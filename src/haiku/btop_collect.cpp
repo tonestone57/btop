@@ -34,8 +34,11 @@ tab-size = 4
 #include <algorithm>
 #include <arpa/inet.h>
 #include <net/if.h>
+#ifndef _BSD_SOURCE
 #define _BSD_SOURCE
+#endif
 #include <bsd/ifaddrs.h>
+#include <bsd/net/if.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
@@ -69,13 +72,6 @@ namespace Cpu {
 	std::optional<std::string> container_engine;
 
 	string get_cpuName() {
-		system_info info;
-		if (get_system_info(&info) == B_OK) {
-			if (info.cpu_type >= B_CPU_INTEL_x86_586 && info.cpu_type < B_CPU_AMD_x86_64)
-				return "Intel x86 CPU";
-			if (info.cpu_type >= B_CPU_AMD_x86_64)
-				return "AMD/Intel x64 CPU";
-		}
 		return "Haiku CPU";
 	}
 
@@ -160,10 +156,6 @@ namespace Cpu {
 	}
 
 	auto get_cpuHz() -> string {
-		system_info info;
-		if (get_system_info(&info) == B_OK) {
-			return to_string(info.cpu_clock_speed / 1000000);
-		}
 		return "";
 	}
 
@@ -198,7 +190,7 @@ namespace Mem {
 		if (get_system_info(&info) == B_OK) {
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
 			current_mem.stats["used"] = (uint64_t)(info.used_pages - info.cached_pages) * B_PAGE_SIZE;
-			current_mem.stats["free"] = (uint64_t)info.free_pages * B_PAGE_SIZE;
+			current_mem.stats["free"] = (uint64_t)(info.max_pages - info.used_pages) * B_PAGE_SIZE;
 			current_mem.stats["available"] = current_mem.stats["free"] + current_mem.stats["cached"];
 		}
 
@@ -293,7 +285,7 @@ namespace Net {
 						auto& s = stat[dir];
 						if (val < s.last) s.rollover += s.last;
 						if (timestamp > 0)
-							s.speed = (val + s.rollover - s.last) * 1000 / max(1ULL, new_timestamp - timestamp);
+							s.speed = (val + s.rollover - s.last) * 1000 / max((uint64_t)1, (uint64_t)(new_timestamp - timestamp));
 						if (s.speed > s.top) s.top = s.speed;
 						s.total = val + s.rollover - s.offset;
 						s.last = val;
