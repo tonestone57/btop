@@ -25,7 +25,9 @@ tab-size = 4
 #include <utility>
 #include <pwd.h>
 #include <stdlib.h>
+#include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <deque>
@@ -34,23 +36,20 @@ tab-size = 4
 #include <algorithm>
 #include <arpa/inet.h>
 #include <net/if.h>
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
-#include <bsd/ifaddrs.h>
-#include <bsd/net/if.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/sockio.h>
 
 #include "../btop_config.hpp"
 #include "../btop_log.hpp"
 #include "../btop_shared.hpp"
 #include "../btop_tools.hpp"
 
-using std::clamp, std::string_literals::operator""s, std::cmp_equal, std::cmp_less, std::cmp_greater;
+using namespace std::literals;
+using std::clamp, std::cmp_equal, std::cmp_less, std::cmp_greater;
 using std::ifstream, std::numeric_limits, std::streamsize, std::round, std::max, std::min, std::to_string;
 namespace fs = std::filesystem;
 using namespace Tools;
@@ -71,8 +70,21 @@ namespace Cpu {
 	tuple<int, float, long, string> current_bat;
 	std::optional<std::string> container_engine;
 
+	/*
+	 * NOTE: Modern Haiku (especially 64-bit) has removed several members from system_info
+	 * like cpu_type and cpu_clock_speed. The following functions use fallbacks or stubs
+	 * to maintain compatibility while allowing compilation.
+	 * TODO: Implement a more robust way to retrieve CPU model and frequency on Haiku
+	 * using get_cpu_info() or other modern APIs.
+	 */
 	string get_cpuName() {
+#if defined(__x86_64__)
+		return "x86_64 CPU";
+#elif defined(__i386__)
+		return "x86 CPU";
+#else
 		return "Haiku CPU";
+#endif
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -256,7 +268,10 @@ namespace Net {
 			Net::IfAddrsPtr if_addrs{};
 			if (if_addrs.get_status() != 0) return empty_net;
 
+			int sock = socket(AF_INET, SOCK_DGRAM, 0);
 			interfaces.clear();
+			std::unordered_set<string> seen_interfaces;
+
 			for (auto* ifa = if_addrs.get(); ifa != nullptr; ifa = ifa->ifa_next) {
 				if (ifa->ifa_addr == nullptr) continue;
 				const string iface = ifa->ifa_name;
@@ -274,28 +289,34 @@ namespace Net {
 					net[iface].ipv6 = ip;
 				}
 
-				if (ifa->ifa_data != nullptr) {
-					auto* ifd = (struct if_data*)ifa->ifa_data;
-					auto& stat = net[iface].stat;
-					uint64_t rx = ifd->ifi_ibytes;
-					uint64_t tx = ifd->ifi_obytes;
+				if (sock >= 0 && !seen_interfaces.contains(iface)) {
+					seen_interfaces.insert(iface);
+					struct ifreq ifr;
+					memset(&ifr, 0, sizeof(ifr));
+					strncpy(ifr.ifr_name, iface.c_str(), IFNAMSIZ - 1);
+					if (ioctl(sock, SIOCGIFSTATS, &ifr) == 0) {
+						auto& stat = net[iface].stat;
+						uint64_t rx = ifr.ifr_stats.receive_bytes;
+						uint64_t tx = ifr.ifr_stats.send_bytes;
 
-					for (const string& dir : {"download", "upload"}) {
-						uint64_t val = (dir == "download") ? rx : tx;
-						auto& s = stat[dir];
-						if (val < s.last) s.rollover += s.last;
-						if (timestamp > 0)
-							s.speed = (val + s.rollover - s.last) * 1000 / max((uint64_t)1, (uint64_t)(new_timestamp - timestamp));
-						if (s.speed > s.top) s.top = s.speed;
-						s.total = val + s.rollover - s.offset;
-						s.last = val;
+						for (const string& dir : {"download"s, "upload"s}) {
+							uint64_t val = (dir == "download"s) ? rx : tx;
+							auto& s = stat[dir];
+							if (val < s.last) s.rollover += s.last;
+							if (timestamp > 0)
+								s.speed = (val + s.rollover - s.last) * 1000 / std::max<uint64_t>(1, new_timestamp - timestamp);
+							if (s.speed > s.top) s.top = s.speed;
+							s.total = val + s.rollover - s.offset;
+							s.last = val;
 
-						auto& bw = net[iface].bandwidth[dir];
-						bw.push_back(s.speed);
-						if (bw.size() > (size_t)width * 2) bw.pop_front();
+							auto& bw = net[iface].bandwidth[dir];
+							bw.push_back(s.speed);
+							if (bw.size() > (size_t)width * 2) bw.pop_front();
+						}
 					}
 				}
 			}
+			if (sock >= 0) close(sock);
 
 			if (net.size() > interfaces.size()) {
 				for (auto it = net.begin(); it != net.end();) {
