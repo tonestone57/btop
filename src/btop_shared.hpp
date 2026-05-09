@@ -32,24 +32,25 @@ tab-size = 4
 
 #include <unistd.h>
 
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
-# include <kvm.h>
-#elif defined(__HAIKU__)
-# include <OS.h>
-#endif
-
 // From `man 3 getifaddrs`: <net/if.h> must be included before <ifaddrs.h>
 // clang-format off
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <net/if.h>
 #ifdef __HAIKU__
-# define _BSD_SOURCE
+# ifndef _BSD_SOURCE
+#  define _BSD_SOURCE
+# endif
 # include <bsd/ifaddrs.h>
 #else
 # include <ifaddrs.h>
 #endif
 // clang-format on
+
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+# include <kvm.h>
+#elif defined(__HAIKU__)
+# include <OS.h>
+#endif
 
 using std::array;
 using std::atomic;
