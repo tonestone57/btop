@@ -37,9 +37,6 @@ tab-size = 4
 #include <sys/socket.h>
 #include <net/if.h>
 #ifdef __HAIKU__
-# ifndef _BSD_SOURCE
-#  define _BSD_SOURCE
-# endif
 # include <bsd/ifaddrs.h>
 #else
 # include <ifaddrs.h>

@@ -34,16 +34,13 @@ tab-size = 4
 #include <algorithm>
 #include <arpa/inet.h>
 #include <net/if.h>
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
 #include <bsd/ifaddrs.h>
-#include <bsd/net/if.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/sockio.h>
 
 #include "../btop_config.hpp"
 #include "../btop_log.hpp"
@@ -274,7 +271,37 @@ namespace Net {
 					net[iface].ipv6 = ip;
 				}
 
-				if (ifa->ifa_data != nullptr) {
+				int sock = socket(AF_INET, SOCK_DGRAM, 0);
+				if (sock >= 0) {
+					struct ifreq ifr;
+					memset(&ifr, 0, sizeof(ifr));
+					strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ);
+					if (ioctl(sock, SIOCGIFSTATS, &ifr) == 0) {
+						auto& stat = net[iface].stat;
+						uint64_t rx = ifr.ifr_stats.receive.bytes;
+						uint64_t tx = ifr.ifr_stats.send.bytes;
+
+						for (const string& dir : {"download", "upload"}) {
+							uint64_t val = (dir == "download") ? rx : tx;
+							auto& s = stat[dir];
+							if (val < s.last) s.rollover += s.last;
+							if (timestamp > 0)
+								s.speed = (val + s.rollover - s.last) * 1000 / std::max<uint64_t>(1, new_timestamp - timestamp);
+							if (s.speed > s.top) s.top = s.speed;
+							s.total = val + s.rollover - s.offset;
+							s.last = val;
+
+							auto& bw = net[iface].bandwidth[dir];
+							bw.push_back(s.speed);
+							if (bw.size() > (size_t)width * 2) bw.pop_front();
+						}
+					}
+					close(sock);
+				} else if (ifa->ifa_data != nullptr) {
+					// Fallback for cases where ioctl might fail but ifa_data exists (unlikely on Haiku)
+					// This part is kept as a skeleton if needed for other platforms, but for Haiku,
+					// the previous compilation error showed struct if_data is incomplete/missing.
+					/*
 					auto* ifd = (struct if_data*)ifa->ifa_data;
 					auto& stat = net[iface].stat;
 					uint64_t rx = ifd->ifi_ibytes;
@@ -294,6 +321,7 @@ namespace Net {
 						bw.push_back(s.speed);
 						if (bw.size() > (size_t)width * 2) bw.pop_front();
 					}
+					*/
 				}
 			}
 
