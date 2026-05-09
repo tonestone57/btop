@@ -43,7 +43,12 @@ tab-size = 4
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <ifaddrs.h>
+#ifdef __HAIKU__
+# define _BSD_SOURCE
+# include <bsd/ifaddrs.h>
+#else
+# include <ifaddrs.h>
+#endif
 // clang-format on
 
 using std::array;
