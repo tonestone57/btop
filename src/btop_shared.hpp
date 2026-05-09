@@ -32,18 +32,19 @@ tab-size = 4
 
 #include <unistd.h>
 
-// From `man 3 getifaddrs`: <net/if.h> must be included before <ifaddrs.h>
-// clang-format off
-#include <sys/socket.h>
-#include <net/if.h>
-#include <ifaddrs.h>
-// clang-format on
-
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 # include <kvm.h>
 #elif defined(__HAIKU__)
 # include <OS.h>
 #endif
+
+// From `man 3 getifaddrs`: <net/if.h> must be included before <ifaddrs.h>
+// clang-format off
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+// clang-format on
 
 using std::array;
 using std::atomic;
