@@ -25,7 +25,9 @@ tab-size = 4
 #include <utility>
 #include <pwd.h>
 #include <stdlib.h>
+#include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <deque>
@@ -34,7 +36,6 @@ tab-size = 4
 #include <algorithm>
 #include <arpa/inet.h>
 #include <net/if.h>
-#include <bsd/ifaddrs.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
@@ -47,7 +48,8 @@ tab-size = 4
 #include "../btop_shared.hpp"
 #include "../btop_tools.hpp"
 
-using std::clamp, std::string_literals::operator""s, std::cmp_equal, std::cmp_less, std::cmp_greater;
+using namespace std::literals;
+using std::clamp, std::cmp_equal, std::cmp_less, std::cmp_greater;
 using std::ifstream, std::numeric_limits, std::streamsize, std::round, std::max, std::min, std::to_string;
 namespace fs = std::filesystem;
 using namespace Tools;
@@ -253,7 +255,10 @@ namespace Net {
 			Net::IfAddrsPtr if_addrs{};
 			if (if_addrs.get_status() != 0) return empty_net;
 
+			int sock = socket(AF_INET, SOCK_DGRAM, 0);
 			interfaces.clear();
+			std::unordered_set<string> seen_interfaces;
+
 			for (auto* ifa = if_addrs.get(); ifa != nullptr; ifa = ifa->ifa_next) {
 				if (ifa->ifa_addr == nullptr) continue;
 				const string iface = ifa->ifa_name;
@@ -271,17 +276,17 @@ namespace Net {
 					net[iface].ipv6 = ip;
 				}
 
-				int sock = socket(AF_INET, SOCK_DGRAM, 0);
-				if (sock >= 0) {
+				if (sock >= 0 && !seen_interfaces.contains(iface)) {
+					seen_interfaces.insert(iface);
 					struct ifreq ifr;
 					memset(&ifr, 0, sizeof(ifr));
-					strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ);
+					strncpy(ifr.ifr_name, iface.c_str(), IFNAMSIZ - 1);
 					if (ioctl(sock, SIOCGIFSTATS, &ifr) == 0) {
 						auto& stat = net[iface].stat;
-						uint64_t rx = ifr.ifr_stats.receive.bytes;
-						uint64_t tx = ifr.ifr_stats.send.bytes;
+						uint64_t rx = ifr.ifr_stats.receive_bytes;
+						uint64_t tx = ifr.ifr_stats.send_bytes;
 
-						for (const string& dir : {"download", "upload"}) {
+						for (const string& dir : {"download"s, "upload"s}) {
 							uint64_t val = (dir == "download") ? rx : tx;
 							auto& s = stat[dir];
 							if (val < s.last) s.rollover += s.last;
@@ -296,34 +301,9 @@ namespace Net {
 							if (bw.size() > (size_t)width * 2) bw.pop_front();
 						}
 					}
-					close(sock);
-				} else if (ifa->ifa_data != nullptr) {
-					// Fallback for cases where ioctl might fail but ifa_data exists (unlikely on Haiku)
-					// This part is kept as a skeleton if needed for other platforms, but for Haiku,
-					// the previous compilation error showed struct if_data is incomplete/missing.
-					/*
-					auto* ifd = (struct if_data*)ifa->ifa_data;
-					auto& stat = net[iface].stat;
-					uint64_t rx = ifd->ifi_ibytes;
-					uint64_t tx = ifd->ifi_obytes;
-
-					for (const string& dir : {"download", "upload"}) {
-						uint64_t val = (dir == "download") ? rx : tx;
-						auto& s = stat[dir];
-						if (val < s.last) s.rollover += s.last;
-						if (timestamp > 0)
-							s.speed = (val + s.rollover - s.last) * 1000 / max((uint64_t)1, (uint64_t)(new_timestamp - timestamp));
-						if (s.speed > s.top) s.top = s.speed;
-						s.total = val + s.rollover - s.offset;
-						s.last = val;
-
-						auto& bw = net[iface].bandwidth[dir];
-						bw.push_back(s.speed);
-						if (bw.size() > (size_t)width * 2) bw.pop_front();
-					}
-					*/
 				}
 			}
+			if (sock >= 0) close(sock);
 
 			if (net.size() > interfaces.size()) {
 				for (auto it = net.begin(); it != net.end();) {
