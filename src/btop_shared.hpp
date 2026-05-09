@@ -36,7 +36,12 @@ tab-size = 4
 // clang-format off
 #include <sys/socket.h>
 #include <net/if.h>
-#include <ifaddrs.h>
+#ifdef __HAIKU__
+# define _BSD_SOURCE
+# include <bsd/ifaddrs.h>
+#else
+# include <ifaddrs.h>
+#endif
 // clang-format on
 
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)

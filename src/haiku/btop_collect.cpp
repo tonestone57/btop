@@ -34,7 +34,8 @@ tab-size = 4
 #include <algorithm>
 #include <arpa/inet.h>
 #include <net/if.h>
-#include <ifaddrs.h>
+#define _BSD_SOURCE
+#include <bsd/ifaddrs.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
