@@ -296,8 +296,8 @@ namespace Net {
 					strncpy(ifr.ifr_name, iface.c_str(), IFNAMSIZ - 1);
 					if (ioctl(sock, SIOCGIFSTATS, &ifr) == 0) {
 						auto& stat = net[iface].stat;
-						uint64_t rx = ifr.ifr_stats.receive_bytes;
-						uint64_t tx = ifr.ifr_stats.send_bytes;
+						uint64_t rx = ifr.ifr_stats.receive.bytes;
+						uint64_t tx = ifr.ifr_stats.send.bytes;
 
 						for (const string& dir : {"download"s, "upload"s}) {
 							uint64_t val = (dir == "download"s) ? rx : tx;
