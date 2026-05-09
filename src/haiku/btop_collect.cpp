@@ -196,9 +196,9 @@ namespace Mem {
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
-			current_mem.stats["used"] = (uint64_t)(info.used_pages - info.cached_pages) * B_PAGE_SIZE;
 			current_mem.stats["free"] = (uint64_t)(info.max_pages - info.used_pages) * B_PAGE_SIZE;
 			current_mem.stats["available"] = current_mem.stats["free"] + current_mem.stats["cached"];
+			current_mem.stats["used"] = (uint64_t)info.max_pages * B_PAGE_SIZE - current_mem.stats["available"];
 		}
 
 		uint64_t totalMem = get_totalMem();
@@ -220,9 +220,14 @@ namespace Mem {
 			while ((dev = next_dev(&cookie)) >= 0) {
 				fs_info fsi;
 				if (fs_stat_dev(dev, &fsi) == B_OK) {
+					string fsh_name = fsi.fsh_name;
+					if (fsh_name == "rootfs" or fsh_name == "devfs" or fsh_name == "pipefs" or fsh_name == "writefs")
+						continue;
+
 					disk_info di;
 					di.dev = fsi.device_name;
 					di.name = fsi.volume_name[0] == '\0' ? fsi.device_name : fsi.volume_name;
+					di.fstype = fsh_name;
 					di.total = (int64_t)fsi.total_blocks * fsi.block_size;
 					di.free = (int64_t)fsi.free_blocks * fsi.block_size;
 					di.used = di.total - di.free;
@@ -415,8 +420,13 @@ namespace Proc {
 			bigtime_t team_kernel_time = 0;
 			while (get_next_thread_info(ti.team, &thread_cookie, &thi) == B_OK) {
 				pi.threads++;
-				team_user_time += thi.user_time;
-				team_kernel_time += thi.kernel_time;
+				string thread_name = thi.name;
+				if (ti.team == 1 and thread_name.starts_with("idle thread ")) {
+					// Skip idle threads in kernel team for CPU calculation
+				} else {
+					team_user_time += thi.user_time;
+					team_kernel_time += thi.kernel_time;
+				}
 				if (thi.state == B_THREAD_RUNNING) pi.state = 'R';
 				else if (pi.state != 'R') {
 					switch (thi.state) {
