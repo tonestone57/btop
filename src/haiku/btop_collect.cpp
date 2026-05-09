@@ -57,9 +57,7 @@ using namespace Tools;
 //? --------------------------------------------------- FUNCTIONS -----------------------------------------------------
 
 namespace Cpu {
-	string box;
-	int x, y, width, height, min_width, min_height;
-	bool shown, redraw, got_sensors = false, cpu_temp_only = false, has_battery = false, supports_watts = false;
+	bool got_sensors = false, cpu_temp_only = false, has_battery = false, supports_watts = false;
 	vector<long long> core_old_active;
 	vector<long long> core_old_total;
 	cpu_info current_cpu;
@@ -68,7 +66,6 @@ namespace Cpu {
 	vector<string> available_sensors = {"Auto"};
 	std::unordered_map<int, int> core_mapping;
 	tuple<int, float, long, string> current_bat;
-	std::optional<std::string> container_engine;
 
 	/*
 	 * NOTE: Modern Haiku (especially 64-bit) has removed several members from system_info
@@ -177,9 +174,7 @@ namespace Cpu {
 }
 
 namespace Mem {
-	string box;
-	int x, y, width, height, min_width, min_height;
-	bool has_swap = false, shown, redraw;
+	bool has_swap = false;
 	mem_info current_mem;
 	int disk_ios = 0;
 
@@ -248,9 +243,6 @@ namespace Mem {
 }
 
 namespace Net {
-	string box;
-	int x, y, width, height, min_width, min_height;
-	bool shown, redraw;
 	std::unordered_map<string, net_info> current_net;
 	net_info empty_net = {};
 	vector<string> interfaces;
@@ -341,15 +333,8 @@ namespace Net {
 
 namespace Proc {
 	atomic<int> numpids = 0;
-	string box;
-	int x, y, width, height, min_width, min_height;
-	bool shown, redraw;
-	int select_max;
 	atomic<int> detailed_pid;
-	int selected_pid, start, selected, collapse = -1, expand = -1, filter_found = 0, selected_depth, toggle_children = -1;
-	int scroll_pos;
-	string selected_name;
-	atomic<bool> resized;
+	int collapse = -1, expand = -1, filter_found = 0, toggle_children = -1;
 
 	vector<proc_info> current_procs;
 	std::unordered_map<string, string> uid_user;
