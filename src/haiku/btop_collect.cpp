@@ -70,8 +70,21 @@ namespace Cpu {
 	tuple<int, float, long, string> current_bat;
 	std::optional<std::string> container_engine;
 
+	/*
+	 * NOTE: Modern Haiku (especially 64-bit) has removed several members from system_info
+	 * like cpu_type and cpu_clock_speed. The following functions use fallbacks or stubs
+	 * to maintain compatibility while allowing compilation.
+	 * TODO: Implement a more robust way to retrieve CPU model and frequency on Haiku
+	 * using get_cpu_info() or other modern APIs.
+	 */
 	string get_cpuName() {
+#if defined(__x86_64__)
+		return "x86_64 CPU";
+#elif defined(__i386__)
+		return "x86 CPU";
+#else
 		return "Haiku CPU";
+#endif
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -287,7 +300,7 @@ namespace Net {
 						uint64_t tx = ifr.ifr_stats.send_bytes;
 
 						for (const string& dir : {"download"s, "upload"s}) {
-							uint64_t val = (dir == "download") ? rx : tx;
+							uint64_t val = (dir == "download"s) ? rx : tx;
 							auto& s = stat[dir];
 							if (val < s.last) s.rollover += s.last;
 							if (timestamp > 0)
