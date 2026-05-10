@@ -71,17 +71,36 @@ namespace Cpu {
 	 * NOTE: Modern Haiku (especially 64-bit) has removed several members from system_info
 	 * like cpu_type and cpu_clock_speed. The following functions use fallbacks or stubs
 	 * to maintain compatibility while allowing compilation.
-	 * TODO: Implement a more robust way to retrieve CPU model and frequency on Haiku
-	 * using get_cpu_info() or other modern APIs.
 	 */
 	string get_cpuName() {
-#if defined(__x86_64__)
-		return "x86_64 CPU";
-#elif defined(__i386__)
-		return "x86 CPU";
-#else
-		return "Haiku CPU";
+		string name;
+#if defined(__x86_64__) || defined(__i386__)
+		cpuid_info info;
+		if (get_cpuid(&info, 0x80000000, 0) == B_OK && info.eax_0.max_eax >= 0x80000004) {
+			char brand[49];
+			memset(brand, 0, sizeof(brand));
+			for (uint32 i = 0; i < 3; i++) {
+				if (get_cpuid(&info, 0x80000002 + i, 0) == B_OK) {
+					memcpy(brand + (i * 16), &info.regs.eax, 4);
+					memcpy(brand + (i * 16) + 4, &info.regs.ebx, 4);
+					memcpy(brand + (i * 16) + 8, &info.regs.ecx, 4);
+					memcpy(brand + (i * 16) + 12, &info.regs.edx, 4);
+				}
+			}
+			name = brand;
+			name = trim(name);
+		}
 #endif
+		if (name.empty()) {
+#if defined(__x86_64__)
+			name = "x86_64 CPU";
+#elif defined(__i386__)
+			name = "x86 CPU";
+#else
+			name = "Haiku CPU";
+#endif
+		}
+		return name;
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -139,6 +158,8 @@ namespace Cpu {
 			current_cpu.cpu_percent.at("idle").push_back(100);
 		}
 
+	cpuHz = get_cpuHz();
+
 		for (const auto& name : {"user", "system", "nice", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"}) {
 			current_cpu.cpu_percent.at(name).push_back(0);
 		}
@@ -165,13 +186,9 @@ namespace Cpu {
 	}
 
 	auto get_cpuHz() -> string {
-		system_info info;
-		if (get_system_info(&info) == B_OK) {
-			// Haiku reports clock speed in Hz in some versions, but it's often missing in 64-bit.
-			// However, we can try to get it if available or use a fallback.
-			// For now, return empty as there's no reliable cross-version way without parsing /proc/cpu (which doesn't exist on Haiku)
-			// or using specific x86 instructions.
-			return "";
+		::cpu_info info;
+		if (get_cpu_info(0, 1, &info) == B_OK) {
+			return floating_humanizer(info.current_frequency, true, 0, false, false) + "Hz";
 		}
 		return "";
 	}
@@ -203,10 +220,15 @@ namespace Mem {
 
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
+			current_mem.stats["used"] = (uint64_t)info.used_pages * B_PAGE_SIZE;
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
-			current_mem.stats["free"] = (uint64_t)(info.max_pages > info.used_pages ? info.max_pages - info.used_pages : 0) * B_PAGE_SIZE;
-			current_mem.stats["used"] = (uint64_t)(info.used_pages > info.cached_pages ? info.used_pages - info.cached_pages : 0) * B_PAGE_SIZE;
-			current_mem.stats["available"] = current_mem.stats["free"] + current_mem.stats["cached"];
+			current_mem.stats["free"] = (uint64_t)(info.max_pages > (info.used_pages + info.cached_pages) ? info.max_pages - info.used_pages - info.cached_pages : 0) * B_PAGE_SIZE;
+			current_mem.stats["available"] = (uint64_t)(info.max_pages > info.used_pages ? info.max_pages - info.used_pages : 0) * B_PAGE_SIZE;
+
+			current_mem.stats["swap_total"] = (uint64_t)info.max_swap_pages * B_PAGE_SIZE;
+			current_mem.stats["swap_free"] = (uint64_t)info.free_swap_pages * B_PAGE_SIZE;
+			current_mem.stats["swap_used"] = current_mem.stats["swap_total"] - current_mem.stats["swap_free"];
+			has_swap = (current_mem.stats["swap_total"] > 0);
 		}
 
 		uint64_t totalMem = get_totalMem();
@@ -216,7 +238,7 @@ namespace Mem {
 		}
 		for (const auto& name : swap_names) {
 			if (!current_mem.percent.contains(name)) current_mem.percent[name] = {};
-			current_mem.percent[name].push_back(0);
+			current_mem.percent[name].push_back(current_mem.stats["swap_total"] > 0 ? round((double)current_mem.stats[name] * 100 / current_mem.stats["swap_total"]) : 0);
 			while (current_mem.percent[name].size() > (size_t)width * 2) current_mem.percent[name].pop_front();
 		}
 
@@ -251,6 +273,20 @@ namespace Mem {
 				} else {
 					Logger::debug("Mem::collect() -> fs_stat_dev() failed for dev {}", static_cast<int>(dev));
 				}
+			}
+
+			if (current_mem.stats["swap_total"] > 0) {
+				disk_info di;
+				di.name = "Swap";
+				di.dev = "swap";
+				di.fstype = "swap";
+				di.total = current_mem.stats["swap_total"];
+				di.used = current_mem.stats["swap_used"];
+				di.free = current_mem.stats["swap_free"];
+				di.used_percent = round((double)di.used * 100 / di.total);
+				di.free_percent = 100 - di.used_percent;
+				current_mem.disks[di.name] = di;
+				current_mem.disks_order.push_back(di.name);
 			}
 		}
 
