@@ -2337,7 +2337,7 @@ namespace Draw {
 		#endif
 			const string cpu_title = uresize(
 					(custom.empty() ? Cpu::cpuName : custom),
-					b_width - (Config::getB("show_cpu_freq") and hasCpuHz ? (freq_range ? 20 : 10) : 5)
+					b_width - (Config::getB("show_cpu_freq") and hasCpuHz ? (freq_range ? 16 : 8) : 5)
 			);
 			box += createBox(b_x, b_y, b_width, b_height, "", false, cpu_title);
 		}

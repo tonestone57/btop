@@ -100,7 +100,7 @@ namespace Cpu {
 			name = "Haiku CPU";
 #endif
 		}
-		return trim_name(name);
+		return Cpu::trim_name(name);
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -189,9 +189,9 @@ namespace Cpu {
 		::cpu_info info;
 		if (get_cpu_info(0, 1, &info) == B_OK) {
 			double hz = (double)info.current_frequency;
-			if (hz > 999999999) return fmt::format("{:.2f} GHz", hz / 1000000000);
-			if (hz > 999999) return fmt::format("{:.2f} MHz", hz / 1000000);
-			return fmt::format("{:.0f} Hz", hz);
+			if (hz > 999999999) return fmt::format("{:.1f}GHz", hz / 1000000000);
+			if (hz > 999999) return fmt::format("{:.1f}MHz", hz / 1000000);
+			return fmt::format("{:.0f}Hz", hz);
 		}
 		return "";
 	}
@@ -225,7 +225,8 @@ namespace Mem {
 
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
-			current_mem.stats["used"] = (uint64_t)info.used_pages * B_PAGE_SIZE;
+			// Include ignored pages in used to make the sum match total memory
+			current_mem.stats["used"] = (uint64_t)(info.used_pages + info.ignored_pages) * B_PAGE_SIZE;
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
 			current_mem.stats["free"] = (uint64_t)(info.max_pages > (info.used_pages + info.cached_pages) ? info.max_pages - info.used_pages - info.cached_pages : 0) * B_PAGE_SIZE;
 			current_mem.stats["available"] = (uint64_t)(info.max_pages > info.used_pages ? info.max_pages - info.used_pages : 0) * B_PAGE_SIZE;
