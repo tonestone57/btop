@@ -165,6 +165,14 @@ namespace Cpu {
 	}
 
 	auto get_cpuHz() -> string {
+		system_info info;
+		if (get_system_info(&info) == B_OK) {
+			// Haiku reports clock speed in Hz in some versions, but it's often missing in 64-bit.
+			// However, we can try to get it if available or use a fallback.
+			// For now, return empty as there's no reliable cross-version way without parsing /proc/cpu (which doesn't exist on Haiku)
+			// or using specific x86 instructions.
+			return "";
+		}
 		return "";
 	}
 
@@ -196,9 +204,9 @@ namespace Mem {
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
 			current_mem.stats["cached"] = (uint64_t)info.cached_pages * B_PAGE_SIZE;
-			current_mem.stats["free"] = (uint64_t)(info.max_pages - info.used_pages) * B_PAGE_SIZE;
+			current_mem.stats["free"] = (uint64_t)(info.max_pages > info.used_pages ? info.max_pages - info.used_pages : 0) * B_PAGE_SIZE;
+			current_mem.stats["used"] = (uint64_t)(info.used_pages > info.cached_pages ? info.used_pages - info.cached_pages : 0) * B_PAGE_SIZE;
 			current_mem.stats["available"] = current_mem.stats["free"] + current_mem.stats["cached"];
-			current_mem.stats["used"] = (uint64_t)info.max_pages * B_PAGE_SIZE - current_mem.stats["available"];
 		}
 
 		uint64_t totalMem = get_totalMem();
@@ -222,6 +230,9 @@ namespace Mem {
 				if (fs_stat_dev(dev, &fsi) == B_OK) {
 					string fsh_name = fsi.fsh_name;
 					if (fsh_name == "rootfs" or fsh_name == "devfs" or fsh_name == "pipefs" or fsh_name == "writefs")
+						continue;
+
+					if (fsi.total_blocks <= 0)
 						continue;
 
 					disk_info di;
@@ -323,6 +334,13 @@ namespace Net {
 						it++;
 				}
 			}
+
+			std::sort(interfaces.begin(), interfaces.end(), [](const string& a, const string& b) {
+				bool a_lp = (a.starts_with("loop") or a.starts_with("lo"));
+				bool b_lp = (b.starts_with("loop") or b.starts_with("lo"));
+				if (a_lp != b_lp) return b_lp;
+				return a < b;
+			});
 
 			timestamp = new_timestamp;
 		}
