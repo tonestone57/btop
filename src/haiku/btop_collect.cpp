@@ -100,7 +100,7 @@ namespace Cpu {
 			name = "Haiku CPU";
 #endif
 		}
-		return name;
+		return trim_name(name);
 	}
 
 	auto collect(bool no_update) -> cpu_info& {
@@ -188,7 +188,10 @@ namespace Cpu {
 	auto get_cpuHz() -> string {
 		::cpu_info info;
 		if (get_cpu_info(0, 1, &info) == B_OK) {
-			return floating_humanizer(info.current_frequency, true, 0, false, false) + "Hz";
+			double hz = (double)info.current_frequency;
+			if (hz > 999999999) return fmt::format("{:.2f} GHz", hz / 1000000000);
+			if (hz > 999999) return fmt::format("{:.2f} MHz", hz / 1000000);
+			return fmt::format("{:.0f} Hz", hz);
 		}
 		return "";
 	}
@@ -208,7 +211,9 @@ namespace Mem {
 		if (totalMem > 0) return totalMem;
 		system_info info;
 		if (get_system_info(&info) == B_OK) {
-			totalMem = (uint64_t)info.max_pages * B_PAGE_SIZE;
+			totalMem = (uint64_t)(info.max_pages + info.ignored_pages) * B_PAGE_SIZE;
+			// Round to nearest MiB to handle slight deviations from power-of-two totals
+			totalMem = (totalMem + (1024 * 1024 / 2)) / (1024 * 1024) * (1024 * 1024);
 			return totalMem;
 		}
 		return 0;
@@ -227,6 +232,9 @@ namespace Mem {
 
 			current_mem.stats["swap_total"] = (uint64_t)info.max_swap_pages * B_PAGE_SIZE;
 			current_mem.stats["swap_free"] = (uint64_t)info.free_swap_pages * B_PAGE_SIZE;
+			// Round to nearest MiB
+			current_mem.stats["swap_total"] = (current_mem.stats["swap_total"] + (1024 * 1024 / 2)) / (1024 * 1024) * (1024 * 1024);
+			current_mem.stats["swap_free"] = (current_mem.stats["swap_free"] + (1024 * 1024 / 2)) / (1024 * 1024) * (1024 * 1024);
 			current_mem.stats["swap_used"] = current_mem.stats["swap_total"] - current_mem.stats["swap_free"];
 			has_swap = (current_mem.stats["swap_total"] > 0);
 		}
