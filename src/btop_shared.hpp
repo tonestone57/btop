@@ -169,7 +169,7 @@ namespace Gpu {
 
 		long long mem_total = 0;
 		long long mem_used = 0;
-		deque<long long> mem_utilization_percent = {0}; // TODO: properly handle GPUs that can't report some stats
+		deque<long long> mem_utilization_percent = {0};
 		long long mem_clock_speed = 0; // MHz
 
 		long long pcie_tx = 0; // KB/s
