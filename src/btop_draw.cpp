@@ -2376,7 +2376,7 @@ namespace Draw {
 				height += (height+Cpu::height == Term::height-1);
 				height = max(height, b_height_vec[i] + 2);
 				x_vec[i] = 1; y_vec[i] = 1 + total_height + (not Config::getB("cpu_bottom"))*Cpu::shown*Cpu::height;
-				box[i] = createBox(x_vec[i], y_vec[i], width, height, Theme::c("cpu_box"), true, std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+5)%10); // TODO gpu_box
+				box[i] = createBox(x_vec[i], y_vec[i], width, height, Theme::c("div_line"), true, std::string("gpu") + (char)(shown_panels[i]+'0'), "", (shown_panels[i]+5)%10);
 				b_width = clamp(width/2, min_width, 65);
 				total_height += height;
 
