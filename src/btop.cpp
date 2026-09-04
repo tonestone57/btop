@@ -369,11 +369,13 @@ namespace Runner {
 		active.notify_all();
 	}
 
-	//* Setup semaphore for triggering thread to do work
-	// TODO: This can be made a local without too much effort.
-	std::binary_semaphore do_work { 0 };
-	inline void thread_wait() { do_work.acquire(); }
-	inline void thread_trigger() { do_work.release(); }
+	//* Pointer to local semaphore for triggering thread to do work
+	static std::atomic<std::binary_semaphore*> do_work_ptr { nullptr };
+	inline void thread_trigger() {
+		if (auto* sem = do_work_ptr.load()) {
+			sem->release();
+		}
+	}
 
 	//* Wrapper for raising privileges when using SUID bit
 	class gain_priv {
@@ -471,9 +473,15 @@ namespace Runner {
 		// TODO: On first glance it looks redudant with `Runner::active`. 
 		std::lock_guard lock {mtx};
 
+		std::binary_semaphore do_work { 0 };
+		do_work_ptr.store(&do_work);
+		struct Cleanup {
+			~Cleanup() { do_work_ptr.store(nullptr); }
+		} cleanup;
+
 		//* ----------------------------------------------- THREAD LOOP -----------------------------------------------
 		while (not Global::quitting) {
-			thread_wait();
+			do_work.acquire();
 			atomic_wait_for(active, true, 5000);
 			if (active) {
 				Global::exit_error_msg = "Runner thread failed to get active lock!";
