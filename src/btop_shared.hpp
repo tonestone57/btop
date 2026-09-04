@@ -129,11 +129,11 @@ namespace Gpu {
 
 	const array mem_names { "used"s, "free"s };
 
-	//* Container for process information // TODO
-	/*struct proc_info {
-    unsigned int pid;
-    unsigned long long mem;
-	};*/
+	//* Container for process information
+	struct proc_info {
+		unsigned int pid;
+		unsigned long long mem;
+	};
 
 	//* Container for supported Gpu::*::collect() functions
 	struct gpu_info_supported {
@@ -180,8 +180,8 @@ namespace Gpu {
 
 		gpu_info_supported supported_functions;
 
-		// vector<proc_info> graphics_processes = {}; // TODO
-		// vector<proc_info> compute_processes = {};
+		vector<proc_info> graphics_processes = {};
+		vector<proc_info> compute_processes = {};
 	};
 
 	namespace Nvml {
@@ -422,6 +422,7 @@ namespace Proc {
 		size_t tree_index{};
 		bool collapsed{};
 		bool filtered{};
+		uint64_t gpu_mem{};
 	};
 
 	//* Container for process info box
