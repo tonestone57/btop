@@ -34,48 +34,49 @@ using namespace Tools;
 namespace Cpu {
     std::optional<std::string> container_engine;
 
-	string trim_name(string name) {
+	string trim_name(const string& name) {
 		auto name_vec = ssplit(name);
+		string out;
 
 		if ((name.contains("Xeon") or v_contains(name_vec, "Duo"s)) and v_contains(name_vec, "CPU"s)) {
 			auto cpu_pos = v_index(name_vec, "CPU"s);
 			if (cpu_pos < name_vec.size() - 1 and not name_vec.at(cpu_pos + 1).ends_with(')'))
-				name = name_vec.at(cpu_pos + 1);
+				out = name_vec.at(cpu_pos + 1);
 			else
-				name.clear();
+				out.clear();
 		} else if (v_contains(name_vec, "Ryzen"s)) {
 			auto ryz_pos = v_index(name_vec, "Ryzen"s);
-			name = "Ryzen";
+			out = "Ryzen";
 			int tokens = 0;
 			for (auto i = ryz_pos + 1; i < name_vec.size() && tokens < 2; i++) {
 				const std::string& p = name_vec.at(i);
 				if (p != "AI" && p != "PRO" && p != "H" && p != "HX")
 					tokens++;
-				name += " " + p;
+				out += " " + p;
 			}
 		} else if (name.contains("Intel") and v_contains(name_vec, "CPU"s)) {
 			auto cpu_pos = v_index(name_vec, "CPU"s);
 			if (cpu_pos < name_vec.size() - 1 and not name_vec.at(cpu_pos + 1).ends_with(')') and name_vec.at(cpu_pos + 1) != "@")
-				name = name_vec.at(cpu_pos + 1);
+				out = name_vec.at(cpu_pos + 1);
 			else
-				name.clear();
+				out.clear();
 		} else
-			name.clear();
+			out.clear();
 
-		if (name.empty() and not name_vec.empty()) {
+		if (out.empty() and not name_vec.empty()) {
 			for (const auto &n : name_vec) {
 				if (n == "@") break;
-				name += n + ' ';
+				out += n + ' ';
 			}
-			name.pop_back();
+			out.pop_back();
 			for (const auto& replace : {"Processor", "CPU", "(R)", "(TM)", "Intel", "AMD", "Apple", "Core"}) {
-				name = s_replace(name, replace, "");
-				name = s_replace(name, "  ", " ");
+				out = s_replace(out, replace, "");
+				out = s_replace(out, "  ", " ");
 			}
-			name = trim(name);
+			out = trim(out);
 		}
 
-		return name;
+		return out;
 	}
 }
 
