@@ -286,7 +286,8 @@ struct engines *discover_engines(const char *device)
 			break;
 		}
 
-		strcpy(buf, dent->d_name);
+		strncpy(buf, dent->d_name, sizeof(buf) - 1);
+		buf[sizeof(buf) - 1] = '\0';
 
 		/* xxxN-busy */
 		if (strlen(buf) < (endlen + 4))
