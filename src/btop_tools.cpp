@@ -563,6 +563,13 @@ namespace Tools {
 		string out;
 		try {
 			std::ifstream file(path);
+			std::error_code ec;
+			const auto fsize = fs::file_size(path, ec);
+			if (not ec and fsize > 0) {
+				out.reserve(fsize);
+			} else {
+				out.reserve(128);
+			}
 			for (string readstr; getline(file, readstr); out += readstr);
 		}
 		catch (const std::exception& e) {
