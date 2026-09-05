@@ -36,6 +36,15 @@ TEST(tools, string_split) {
 	}
 }
 
+TEST(tools, s_replace) {
+	EXPECT_EQ(Tools::s_replace("hello world", "world", "there"), "hello there");
+	EXPECT_EQ(Tools::s_replace("foo bar foo baz foo", "foo", "qux"), "qux bar qux baz qux");
+	EXPECT_EQ(Tools::s_replace("aaa", "a", "aa"), "aaaaaa");
+	EXPECT_EQ(Tools::s_replace("hello", "xyz", "abc"), "hello");
+	EXPECT_EQ(Tools::s_replace("hello", "", "abc"), "hello");
+	EXPECT_EQ(Tools::s_replace("", "a", "b"), "");
+}
+
 TEST(cpu, trim_name) {
 	EXPECT_EQ(Cpu::trim_name("Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz"), "E5-2670");
 	EXPECT_EQ(Cpu::trim_name("Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz"), "i7-10700K");
