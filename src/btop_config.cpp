@@ -407,12 +407,9 @@ namespace Config {
 		}
 
 		std::error_code error;
-		if (not fs::exists(config_dir, error)) {
-			if (not fs::create_directories(config_dir, error)) {
-				fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
-				return {};
-			}
-			return config_dir;
+		if (not fs::exists(config_dir, error) and not fs::create_directories(config_dir, error)) {
+			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
+			return {};
 		}
 
 		if (not fs::is_directory(config_dir, error)) {
