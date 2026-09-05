@@ -470,7 +470,9 @@ namespace Runner {
 		sigaddset(&mask, SIGTERM);
 		pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 
-		// TODO: On first glance it looks redudant with `Runner::active`. 
+		// Lock mtx for the duration of the thread's execution.
+		// Runner::stop() uses mtx.try_lock() to determine if the runner thread is still alive/running.
+		// Note that this is distinct from Runner::active, which indicates whether an active collection/draw cycle is in progress.
 		std::lock_guard lock {mtx};
 
 		std::binary_semaphore do_work { 0 };
