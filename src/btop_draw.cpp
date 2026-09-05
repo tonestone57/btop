@@ -1049,7 +1049,7 @@ namespace Gpu {
 			int graph_low_height = single_graph ? 0 : b_height_vec[index] - graph_up_height;
 
 			if (gpu.supported_functions.gpu_utilization) {
-				graph_upper = Draw::Graph{x + width - b_width - 3, graph_up_height, "cpu", safeVal(gpu.gpu_percent, "gpu-totals"s), graph_symbol, false, true}; // TODO cpu -> gpu
+				graph_upper = Draw::Graph{x + width - b_width - 3, graph_up_height, "gpu", safeVal(gpu.gpu_percent, "gpu-totals"s), graph_symbol, false, true};
             	if (not single_graph) {
                 	graph_lower = Draw::Graph{
                     	x + width - b_width - 3,
