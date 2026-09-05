@@ -324,7 +324,7 @@ namespace Shared {
 
 		//? Init for namespace Cpu
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), Shared::coreCount, {});
-		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, {});
+		Cpu::current_cpu.temp = std::nullopt;
 		Cpu::core_old_totals.insert(Cpu::core_old_totals.begin(), Shared::coreCount, 0);
 		Cpu::core_old_idles.insert(Cpu::core_old_idles.begin(), Shared::coreCount, 0);
 
@@ -583,12 +583,16 @@ namespace Cpu {
 	static void update_sensors() {
 		if (cpu_sensor.empty()) return;
 
+		if (not current_cpu.temp.has_value()) {
+			current_cpu.temp = vector<deque<long long>>(Shared::coreCount + 1);
+		}
+
 		const auto& cpu_sensor = (not Config::getS("cpu_sensor").empty() and found_sensors.contains(Config::getS("cpu_sensor")) ? Config::getS("cpu_sensor") : Cpu::cpu_sensor);
 
 		found_sensors.at(cpu_sensor).temp = stol(readfile(found_sensors.at(cpu_sensor).path, "0")) / 1000;
-		current_cpu.temp.at(0).push_back(found_sensors.at(cpu_sensor).temp);
+		current_cpu.temp->at(0).push_back(found_sensors.at(cpu_sensor).temp);
 		current_cpu.temp_max = found_sensors.at(cpu_sensor).crit;
-		if (current_cpu.temp.at(0).size() > 20) current_cpu.temp.at(0).pop_front();
+		if (current_cpu.temp->at(0).size() > 20) current_cpu.temp->at(0).pop_front();
 
 		if (Config::getB("show_coretemp") and not cpu_temp_only) {
 			for (vector<string_view> done; const auto& sensor : core_sensors) {
@@ -597,9 +601,9 @@ namespace Cpu {
 				done.push_back(sensor);
 			}
 			for (const auto& [core, temp] : core_mapping) {
-				if (cmp_less(core + 1, current_cpu.temp.size()) and cmp_less(temp, core_sensors.size())) {
-					current_cpu.temp.at(core + 1).push_back(found_sensors.at(core_sensors.at(temp)).temp);
-					if (current_cpu.temp.at(core + 1).size() > 20) current_cpu.temp.at(core + 1).pop_front();
+				if (cmp_less(core + 1, current_cpu.temp->size()) and cmp_less(temp, core_sensors.size())) {
+					current_cpu.temp->at(core + 1).push_back(found_sensors.at(core_sensors.at(temp)).temp);
+					if (current_cpu.temp->at(core + 1).size() > 20) current_cpu.temp->at(core + 1).pop_front();
 				}
 			}
 		}
@@ -1184,7 +1188,9 @@ namespace Cpu {
 				Logger::debug("Changing CPU max corecount from {} to {}.", Shared::coreCount, cpu.core_percent.size());
 				Runner::coreNum_reset = true;
 				Shared::coreCount = cpu.core_percent.size();
-				while (cmp_less(current_cpu.temp.size(), cpu.core_percent.size() + 1)) current_cpu.temp.push_back({0});
+				if (current_cpu.temp.has_value()) {
+					while (cmp_less(current_cpu.temp->size(), cpu.core_percent.size() + 1)) current_cpu.temp->push_back({0});
+				}
 			}
 
 		}
@@ -1196,6 +1202,8 @@ namespace Cpu {
 
 		if (Config::getB("check_temp") and got_sensors)
 			update_sensors();
+		else
+			current_cpu.temp = std::nullopt;
 
 		if (Config::getB("show_battery") and has_battery)
 			current_bat = get_battery();

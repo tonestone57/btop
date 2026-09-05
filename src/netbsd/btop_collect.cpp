@@ -174,7 +174,7 @@ namespace Shared {
 
 		//? Init for namespace Cpu
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), Shared::coreCount, {});
-		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, {});
+		Cpu::current_cpu.temp = std::nullopt;
 		Cpu::core_old_totals.insert(Cpu::core_old_totals.begin(), Shared::coreCount, 0);
 		Cpu::core_old_idles.insert(Cpu::core_old_idles.begin(), Shared::coreCount, 0);
 		Cpu::collect();
@@ -278,6 +278,9 @@ namespace Cpu {
 #define MUKTOC(v) ((v - 273150000) / 1000000.0)
 
 	void update_sensors() {
+		if (not current_cpu.temp.has_value()) {
+			current_cpu.temp = vector<deque<long long>>(Shared::coreCount + 1);
+		}
 		int64_t current_temp = -1;
 		current_cpu.temp_max = 95;
 		prop_dictionary_t dict, fields, props;
@@ -354,16 +357,16 @@ namespace Cpu {
 		if (current_temp > -1) {
 			current_temp = MUKTOC(current_temp);
 			for (int i = 0; i < Shared::coreCount; i++) {
-				if (cmp_less(i + 1, current_cpu.temp.size())) {
-					current_cpu.temp.at(i + 1).push_back(current_temp);
-					if (current_cpu.temp.at(i + 1).size() > 20) {
-						current_cpu.temp.at(i + 1).pop_front();
+				if (cmp_less(i + 1, current_cpu.temp->size())) {
+					current_cpu.temp->at(i + 1).push_back(current_temp);
+					if (current_cpu.temp->at(i + 1).size() > 20) {
+						current_cpu.temp->at(i + 1).pop_front();
 					}
 				}
 			}
-			current_cpu.temp.at(0).push_back(current_temp);
-			if (current_cpu.temp.at(0).size() > 20) {
-				current_cpu.temp.at(0).pop_front();
+			current_cpu.temp->at(0).push_back(current_temp);
+			if (current_cpu.temp->at(0).size() > 20) {
+				current_cpu.temp->at(0).pop_front();
 			}
 		}
 
@@ -617,6 +620,8 @@ namespace Cpu {
 
 		if (Config::getB("check_temp") and got_sensors)
 			update_sensors();
+		else
+			current_cpu.temp = std::nullopt;
 
 		if (Config::getB("show_battery") and has_battery)
 			current_bat = get_battery();
