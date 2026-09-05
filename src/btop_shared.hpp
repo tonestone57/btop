@@ -230,7 +230,7 @@ namespace Cpu {
 			{"guest_nice", {}}
 		};
 		vector<deque<long long>> core_percent;
-		vector<deque<long long>> temp;
+		vector<std::optional<deque<long long>>> temp;
 		long long temp_max = 0;
 		array<double, 3> load_avg;
 		float usage_watts = 0;

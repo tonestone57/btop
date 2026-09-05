@@ -580,10 +580,7 @@ namespace Cpu {
 		static int bat_pos = 0, bat_len = 0;
 		if (safeVal(cpu.cpu_percent, "total"s).empty()
 			or safeVal(cpu.core_percent, 0).empty()
-			or (show_temps and safeVal(cpu.temp, 0).empty())) return "";
-		if (safeVal(cpu.cpu_percent, "total"s).empty()
-			or safeVal(cpu.core_percent, 0).empty()
-			or (show_temps and safeVal(cpu.temp, 0).empty())) return "";
+			or (show_temps and not safeVal(cpu.temp, 0).has_value())) return "";
 		string out;
 		out.reserve(width * height);
 
@@ -720,10 +717,10 @@ namespace Cpu {
 
 			if (show_temps) {
 				temp_graphs.clear();
-				temp_graphs.emplace_back(5, 1, "temp", safeVal(cpu.temp, 0), graph_symbol, false, false, cpu.temp_max, -23);
+				temp_graphs.emplace_back(5, 1, "temp", safeVal(cpu.temp, 0).value_or(deque<long long>{}), graph_symbol, false, false, cpu.temp_max, -23);
 				if (not hide_cores and b_column_size > 1) {
 					for (const auto& i : iota((size_t)1, cpu.temp.size())) {
-						temp_graphs.emplace_back(5, 1, "temp", safeVal(cpu.temp, i), graph_symbol, false, false, cpu.temp_max, -23);
+						temp_graphs.emplace_back(5, 1, "temp", safeVal(cpu.temp, i).value_or(deque<long long>{}), graph_symbol, false, false, cpu.temp_max, -23);
 					}
 				}
 			}
@@ -841,12 +838,14 @@ namespace Cpu {
 
 		out += Mv::to(b_y + 1, b_x + 1) + Theme::c("main_fg") + Fx::b + "CPU " + cpu_meter(safeVal(cpu.cpu_percent, "total"s).back())
 			+ Theme::g("cpu").at(clamp(safeVal(cpu.cpu_percent, "total"s).back(), 0ll, 100ll)) + rjust(to_string(safeVal(cpu.cpu_percent, "total"s).back()), 4) + Theme::c("main_fg") + '%';
-		if (show_temps) {
-			const auto [temp, unit] = celsius_to(safeVal(cpu.temp, 0).back(), temp_scale);
-			const auto temp_color = Theme::g("temp").at(clamp(safeVal(cpu.temp, 0).back() * 100 / cpu.temp_max, 0ll, 100ll));
+		const auto pkg_temp_opt = safeVal(cpu.temp, 0);
+		if (show_temps and pkg_temp_opt.has_value()) {
+			const auto& pkg_temp_deque = pkg_temp_opt.value();
+			const auto [temp, unit] = celsius_to(pkg_temp_deque.back(), temp_scale);
+			const auto temp_color = Theme::g("temp").at(clamp(pkg_temp_deque.back() * 100 / cpu.temp_max, 0ll, 100ll));
 			if ((b_column_size > 1 or b_columns > 1) and temp_graphs.size() >= 1ll)
 				out += ' ' + Theme::c("inactive_fg") + graph_bg * 5 + Mv::l(5) + temp_color
-					+ temp_graphs.at(0)(safeVal(cpu.temp, 0), data_same or redraw);
+					+ temp_graphs.at(0)(pkg_temp_deque, data_same or redraw);
 			out += rjust(to_string(temp), 4) + Theme::c("main_fg") + unit;
 		}
 
@@ -889,10 +888,9 @@ namespace Cpu {
 			out += rjust(to_string(safeVal(cpu.core_percent, n).back()), (b_column_size < 2 ? 3 : 4)) + Theme::c(enabled ? "main_fg" : "inactive_fg") + '%';
 
 			if (show_temps and not hide_cores) {
-				const auto core_temps = safeVal(cpu.temp, n + 1);
-				if (!core_temps.empty()) {
-					// FIXME: This should be checked during collection and just not be made available with
-					// something like `std::nullopt`.
+				const auto core_temps_opt = safeVal(cpu.temp, n + 1);
+				if (core_temps_opt.has_value() and !core_temps_opt->empty()) {
+					const auto& core_temps = core_temps_opt.value();
 					const auto last_temp = core_temps.back();
 					const auto [temp, unit] = celsius_to(last_temp, temp_scale);
 					const auto temp_color = enabled ? Theme::g("temp").at(clamp(last_temp * 100 / cpu.temp_max, 0ll, 100ll)) : Theme::c("inactive_fg");

@@ -170,9 +170,8 @@ namespace Cpu {
 
 		if (Config::getB("check_temp")) {
 			for (int i = 0; i <= Shared::coreCount; i++) {
-				if (current_cpu.temp.size() <= (size_t)i) current_cpu.temp.push_back({});
-				current_cpu.temp.at(i).push_back(0);
-				while (current_cpu.temp.at(i).size() > 20) current_cpu.temp.at(i).pop_front();
+				if (current_cpu.temp.size() <= (size_t)i) current_cpu.temp.push_back(std::nullopt);
+				else current_cpu.temp.at(i) = std::nullopt;
 			}
 		}
 
@@ -556,7 +555,7 @@ namespace Shared {
 		}
 
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), coreCount, {});
-		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), coreCount + 1, {});
+		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), coreCount + 1, std::nullopt);
 		Cpu::core_old_active.insert(Cpu::core_old_active.begin(), coreCount, 0);
 		Cpu::core_old_total.insert(Cpu::core_old_total.begin(), coreCount, 0);
 

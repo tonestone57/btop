@@ -693,7 +693,7 @@ namespace Shared {
 
 		//? Init for namespace Cpu
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), Shared::coreCount, {});
-		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, {});
+		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, std::nullopt);
 		Cpu::core_old_totals.insert(Cpu::core_old_totals.begin(), Shared::coreCount, 0);
 		Cpu::core_old_idles.insert(Cpu::core_old_idles.begin(), Shared::coreCount, 0);
 		Cpu::collect();
@@ -817,22 +817,40 @@ namespace Cpu {
 			if (macM1) {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 				ThermalSensors sensors;
-				current_cpu.temp.at(0).push_back(sensors.getSensors());
-				if (current_cpu.temp.at(0).size() > 20)
-					current_cpu.temp.at(0).pop_front();
+				auto t = sensors.getSensors();
+				if (t > 0) {
+					if (!current_cpu.temp.at(0).has_value()) current_cpu.temp.at(0) = deque<long long>{};
+					current_cpu.temp.at(0)->push_back(t);
+					if (current_cpu.temp.at(0)->size() > 20)
+						current_cpu.temp.at(0)->pop_front();
+				} else {
+					current_cpu.temp.at(0) = std::nullopt;
+				}
 #endif
 			} else {
 				SMCConnection smcCon;
 				int threadsPerCore = Shared::coreCount / Shared::physicalCoreCount;
 				long long packageT = smcCon.getTemp(-1); // -1 returns package T
-				current_cpu.temp.at(0).push_back(packageT);
+				if (packageT > 0) {
+					if (!current_cpu.temp.at(0).has_value()) current_cpu.temp.at(0) = deque<long long>{};
+					current_cpu.temp.at(0)->push_back(packageT);
+					if (current_cpu.temp.at(0)->size() > 20)
+						current_cpu.temp.at(0)->pop_front();
+				} else {
+					current_cpu.temp.at(0) = std::nullopt;
+				}
 
 				for (int core = 0; core < Shared::coreCount; core++) {
 					long long temp = smcCon.getTemp((core / threadsPerCore) + core_offset); // same temp for all threads of same physical core
 					if (cmp_less(core + 1, current_cpu.temp.size())) {
-						current_cpu.temp.at(core + 1).push_back(temp);
-						if (current_cpu.temp.at(core + 1).size() > 20)
-							current_cpu.temp.at(core + 1).pop_front();
+						if (temp > 0) {
+							if (!current_cpu.temp.at(core + 1).has_value()) current_cpu.temp.at(core + 1) = deque<long long>{};
+							current_cpu.temp.at(core + 1)->push_back(temp);
+							if (current_cpu.temp.at(core + 1)->size() > 20)
+								current_cpu.temp.at(core + 1)->pop_front();
+						} else {
+							current_cpu.temp.at(core + 1) = std::nullopt;
+						}
 					}
 				}
 			}
