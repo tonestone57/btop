@@ -20,7 +20,6 @@ tab-size = 4
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-// man 3 getifaddrs: "BUGS: If	both <net/if.h>	and <ifaddrs.h>	are being included, <net/if.h> must be included before <ifaddrs.h>"
 #include <net/if.h>
 #include <ifaddrs.h>
 #include <net/if_dl.h>
