@@ -1367,7 +1367,7 @@ namespace Gpu {
 
 				// DebugTimer nvTimer("Nv utilization");
 				//? GPU & memory utilization
-				if (gpus_slice[i].supported_functions.gpu_utilization) {
+				if (gpus_slice[i].supported_functions.gpu_utilization or gpus_slice[i].supported_functions.mem_utilization) {
 					nvmlUtilization_t utilization;
 					result = nvmlDeviceGetUtilizationRates(devices[i], &utilization);
     				if (result != NVML_SUCCESS) {
@@ -1375,8 +1375,10 @@ namespace Gpu {
 						if constexpr(is_init) gpus_slice[i].supported_functions.gpu_utilization = false;
 						if constexpr(is_init) gpus_slice[i].supported_functions.mem_utilization = false;
     				} else {
-						gpus_slice[i].gpu_percent.at("gpu-totals").push_back((long long)utilization.gpu);
-						gpus_slice[i].mem_utilization_percent.push_back((long long)utilization.memory);
+						if (gpus_slice[i].supported_functions.gpu_utilization)
+							gpus_slice[i].gpu_percent.at("gpu-totals").push_back((long long)utilization.gpu);
+						if (gpus_slice[i].supported_functions.mem_utilization)
+							gpus_slice[i].mem_utilization_percent.push_back((long long)utilization.memory);
     				}
 				}
 
