@@ -30,7 +30,6 @@ tab-size = 4
 
 #include <fmt/base.h>
 #include <fmt/core.h>
-#include <sys/statvfs.h>
 
 #include "btop_config.hpp"
 #include "btop_log.hpp"
@@ -400,7 +399,6 @@ namespace Config {
 
 		if (config_dir.empty()) {
 			fmt::print(stderr, "\033[0;31mWarning: \033[0mCould not determine config path: Make sure `$XDG_CONFIG_HOME` or `$HOME` is set\n");
-			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
 			return {};
 		}
 
@@ -410,30 +408,19 @@ namespace Config {
 				return config_dir;
 			}
 			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
-			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
 			return {};
 		}
 
 		if (not fs::is_directory(config_dir, error)) {
 			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not a directory\n", fs::absolute(config_dir).string());
-			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
 			return {};
 		}
 
-		struct statvfs stats {};
-		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_write) == fs::perms::owner_write and
-			statvfs(config_dir.c_str(), &stats) == 0 and (stats.f_flag & ST_RDONLY) == 0) {
-			return config_dir;
-		}
-
-		fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not writable\n", fs::absolute(config_dir).string());
-		// If the config is readable we can still use the provided config, but changes will not be persistent
 		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_read) == fs::perms::owner_read) {
-			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
 			return config_dir;
 		}
 
-		fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
+		fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not readable\n", fs::absolute(config_dir).string());
 		return {};
 	}
 
