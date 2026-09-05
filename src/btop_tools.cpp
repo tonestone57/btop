@@ -319,8 +319,10 @@ namespace Tools {
 	}
 
 	string s_replace(const string& str, const string& from, const string& to) {
+		if (from.empty())
+			return str;
 		string out = str;
-		for (size_t start_pos = out.find(from); start_pos != std::string::npos; start_pos = out.find(from)) {
+		for (size_t start_pos = out.find(from); start_pos != std::string::npos; start_pos = out.find(from, start_pos + to.length())) {
 			out.replace(start_pos, from.length(), to);
 		}
 		return out;
