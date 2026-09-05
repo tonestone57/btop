@@ -171,7 +171,7 @@ namespace Shared {
 
 		//? Init for namespace Cpu
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), Shared::coreCount, {});
-		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, {});
+		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, std::nullopt);
 		Cpu::core_old_totals.insert(Cpu::core_old_totals.begin(), Shared::coreCount, 0);
 		Cpu::core_old_idles.insert(Cpu::core_old_idles.begin(), Shared::coreCount, 0);
 		Logger::debug("Init -> Cpu::collect()");
@@ -263,17 +263,29 @@ namespace Cpu {
 					found++;
 				}
 				if (cmp_less(i + 1, current_cpu.temp.size())) {
-					current_cpu.temp.at(i + 1).push_back(temp);
-					if (current_cpu.temp.at(i + 1).size() > 20)
-						current_cpu.temp.at(i + 1).pop_front();
+					if (temp > 0) {
+						if (!current_cpu.temp.at(i + 1).has_value()) current_cpu.temp.at(i + 1) = deque<long long>{};
+						current_cpu.temp.at(i + 1)->push_back(temp);
+						if (current_cpu.temp.at(i + 1)->size() > 20)
+							current_cpu.temp.at(i + 1)->pop_front();
+					} else {
+						current_cpu.temp.at(i + 1) = std::nullopt;
+					}
 				}
+			} else if (cmp_less(i + 1, current_cpu.temp.size())) {
+				current_cpu.temp.at(i + 1) = std::nullopt;
 			}
 		}
 
-		if (not got_package) p_temp /= found;
-		current_cpu.temp.at(0).push_back(p_temp);
-		if (current_cpu.temp.at(0).size() > 20)
-			current_cpu.temp.at(0).pop_front();
+		if (not got_package and found > 0) p_temp /= found;
+		if (p_temp > 0) {
+			if (!current_cpu.temp.at(0).has_value()) current_cpu.temp.at(0) = deque<long long>{};
+			current_cpu.temp.at(0)->push_back(p_temp);
+			if (current_cpu.temp.at(0)->size() > 20)
+				current_cpu.temp.at(0)->pop_front();
+		} else {
+			current_cpu.temp.at(0) = std::nullopt;
+		}
 
 	}
 
