@@ -1173,8 +1173,8 @@ namespace Menu {
 			if (signalKillRet == EINVAL) {
 				cont_vec.push_back("Unsupported signal!" + Fx::reset);
 			}
-			else if (signalKillRet == EPERM) {
-				cont_vec.push_back("Insufficient permissions to send signal!" + Fx::reset);
+			else if (signalKillRet == EPERM or signalKillRet == EACCES) {
+				cont_vec.push_back("Insufficient permissions!" + Fx::reset);
 			}
 			else if (signalKillRet == ESRCH) {
 				cont_vec.push_back("Process not found!" + Fx::reset);
@@ -1761,6 +1761,7 @@ static int optionsMenu(const string& key) {
 					catch (...) { selected_nice = 0; }
 				}
 				if (not Proc::set_priority(s_pid.value(), selected_nice)) {
+					// Show error message popup on failure
 					signalKillRet = errno;
 					menuMask.set(SignalReturn);
 				}

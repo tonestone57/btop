@@ -184,31 +184,6 @@ namespace Term {
 
 //? --------------------------------------------------- FUNCTIONS -----------------------------------------------------
 
-// ! Disabled due to issue when compiling with musl, reverted back to using regex
-// namespace Fx {
-// 	string uncolor(const string& s) {
-// 		string out = s;
-// 		for (size_t offset = 0, start_pos = 0, end_pos = 0;;) {
-// 			start_pos = (offset == 0) ? out.find('\x1b') : offset;
-// 			if (start_pos == string::npos)
-// 				break;
-// 			offset = start_pos + 1;
-// 			end_pos = out.find('m', offset);
-// 			if (end_pos == string::npos)
-// 				break;
-// 			else if (auto next_pos = out.find('\x1b', offset); not isdigit(out[end_pos - 1]) or end_pos > next_pos) {
-// 			 	offset = next_pos;
-// 				continue;
-// 			}
-
-// 			out.erase(start_pos, (end_pos - start_pos)+1);
-// 			offset = 0;
-// 		}
-// 		out.shrink_to_fit();
-// 		return out;
-// 	}
-// }
-
 namespace Tools {
 
 	string replace_ascii_control(string str, const char replacement) {
@@ -319,8 +294,10 @@ namespace Tools {
 	}
 
 	string s_replace(const string& str, const string& from, const string& to) {
+		if (from.empty())
+			return str;
 		string out = str;
-		for (size_t start_pos = out.find(from); start_pos != std::string::npos; start_pos = out.find(from)) {
+		for (size_t start_pos = out.find(from); start_pos != std::string::npos; start_pos = out.find(from, start_pos + to.length())) {
 			out.replace(start_pos, from.length(), to);
 		}
 		return out;

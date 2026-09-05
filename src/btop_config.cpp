@@ -398,8 +398,6 @@ namespace Config {
 			}
 		}
 
-		// FIXME: This warnings can be noisy if the user deliberately has a non-writable config dir
-		//  offer an alternative | disable messages by default | disable messages if config dir is not writable | disable messages with a flag
 		if (config_dir.empty()) {
 			fmt::print(stderr, "\033[0;31mWarning: \033[0mCould not determine config path: Make sure `$XDG_CONFIG_HOME` or `$HOME` is set\n");
 			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
