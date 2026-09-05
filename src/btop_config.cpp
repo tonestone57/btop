@@ -398,39 +398,41 @@ namespace Config {
 			}
 		}
 
-		// FIXME: This warnings can be noisy if the user deliberately has a non-writable config dir
-		//  offer an alternative | disable messages by default | disable messages if config dir is not writable | disable messages with a flag
-		// FIXME: Make happy path not branch
-		if (not config_dir.empty()) {
-			std::error_code error;
-			if (fs::exists(config_dir, error)) {
-				if (fs::is_directory(config_dir, error)) {
-					struct statvfs stats {};
-					if ((fs::status(config_dir, error).permissions() & fs::perms::owner_write) == fs::perms::owner_write and
-						statvfs(config_dir.c_str(), &stats) == 0 and (stats.f_flag & ST_RDONLY) == 0) {
-						return config_dir;
-					} else {
-						fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not writable\n", fs::absolute(config_dir).string());
-						// If the config is readable we can still use the provided config, but changes will not be persistent
-						if ((fs::status(config_dir, error).permissions() & fs::perms::owner_read) == fs::perms::owner_read) {
-							fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
-							return config_dir;
-						}
-					}
-				} else {
-					fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not a directory\n", fs::absolute(config_dir).string());
-				}
-			} else {
-				// Doesn't exist
-				if (fs::create_directories(config_dir, error)) {
-					return config_dir;
-				} else {
-					fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
-				}
-			}
-		} else {
+		if (config_dir.empty()) {
 			fmt::print(stderr, "\033[0;31mWarning: \033[0mCould not determine config path: Make sure `$XDG_CONFIG_HOME` or `$HOME` is set\n");
+			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
+			return {};
 		}
+
+		std::error_code error;
+		if (not fs::exists(config_dir, error)) {
+			if (fs::create_directories(config_dir, error)) {
+				return config_dir;
+			}
+			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
+			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
+			return {};
+		}
+
+		if (not fs::is_directory(config_dir, error)) {
+			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not a directory\n", fs::absolute(config_dir).string());
+			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
+			return {};
+		}
+
+		struct statvfs stats {};
+		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_write) == fs::perms::owner_write and
+			statvfs(config_dir.c_str(), &stats) == 0 and (stats.f_flag & ST_RDONLY) == 0) {
+			return config_dir;
+		}
+
+		fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not writable\n", fs::absolute(config_dir).string());
+		// If the config is readable we can still use the provided config, but changes will not be persistent
+		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_read) == fs::perms::owner_read) {
+			fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
+			return config_dir;
+		}
+
 		fmt::print(stderr, "\033[0;31mWarning: \033[0mLogging is disabled, config changes are not persistent\n");
 		return {};
 	}
