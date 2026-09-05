@@ -94,7 +94,6 @@ namespace Fx {
 
 	//* Return a string with all colors and text styling removed
 	inline string uncolor(const string& s) { return std::regex_replace(s, color_regex, ""); }
-	// string uncolor(const string& s);
 
 }
 
