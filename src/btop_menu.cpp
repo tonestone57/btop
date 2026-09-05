@@ -1761,7 +1761,8 @@ static int optionsMenu(const string& key) {
 					catch (...) { selected_nice = 0; }
 				}
 				if (not Proc::set_priority(s_pid.value(), selected_nice)) {
-					// TODO: show error message
+					signalKillRet = errno;
+					menuMask.set(SignalReturn);
 				}
 			}
 			goto MenuClosing;
