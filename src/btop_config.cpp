@@ -375,27 +375,31 @@ namespace Config {
 	};
 	std::unordered_map<std::string_view, int> intsTmp;
 
+	static auto get_base_config_dir() -> fs::path {
+		std::error_code error;
+
+		if (const auto* xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && fs::exists(xdg_config_home, error)) {
+			return fs::path(xdg_config_home) / "btop";
+		}
+
+		if (const auto* home = std::getenv("HOME"); home != nullptr) {
+			const auto config_dir = fs::path(home) / ".config" / "btop";
+			error.clear();
+			if (fs::exists(home, error)) {
+				return config_dir;
+			}
+			if (error) {
+				fmt::print(stderr, "\033[0;31mWarning: \033[0m{} could not be accessed: {}\n", config_dir.string(), error.message());
+			}
+		}
+
+		return {};
+	}
+
 	// Returns a valid config dir or an empty optional
 	// The config dir might be read only, a warning is printed, but a path is returned anyway
 	[[nodiscard]] std::optional<fs::path> get_config_dir() noexcept {
-		fs::path config_dir;
-		{
-			std::error_code error;
-			if (const auto xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr) {
-				if (fs::exists(xdg_config_home, error)) {
-					config_dir = fs::path(xdg_config_home) / "btop";
-				}
-			} else if (const auto home = std::getenv("HOME"); home != nullptr) {
-				error.clear();
-				if (fs::exists(home, error)) {
-					config_dir = fs::path(home) / ".config" / "btop";
-				}
-				if (error) {
-					fmt::print(stderr, "\033[0;31mWarning: \033[0m{} could not be accessed: {}\n", config_dir.string(), error.message());
-					config_dir = "";
-				}
-			}
-		}
+		const auto config_dir = get_base_config_dir();
 
 		if (config_dir.empty()) {
 			fmt::print(stderr, "\033[0;31mWarning: \033[0mCould not determine config path: Make sure `$XDG_CONFIG_HOME` or `$HOME` is set\n");
@@ -404,11 +408,11 @@ namespace Config {
 
 		std::error_code error;
 		if (not fs::exists(config_dir, error)) {
-			if (fs::create_directories(config_dir, error)) {
-				return config_dir;
+			if (not fs::create_directories(config_dir, error)) {
+				fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
+				return {};
 			}
-			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` could not be created: {}\n", fs::absolute(config_dir).string(), error.message());
-			return {};
+			return config_dir;
 		}
 
 		if (not fs::is_directory(config_dir, error)) {
@@ -416,12 +420,12 @@ namespace Config {
 			return {};
 		}
 
-		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_read) == fs::perms::owner_read) {
-			return config_dir;
+		if ((fs::status(config_dir, error).permissions() & fs::perms::owner_read) != fs::perms::owner_read) {
+			fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not readable\n", fs::absolute(config_dir).string());
+			return {};
 		}
 
-		fmt::print(stderr, "\033[0;31mWarning: \033[0m`{}` is not readable\n", fs::absolute(config_dir).string());
-		return {};
+		return config_dir;
 	}
 
 	bool _locked(const std::string_view name) {
