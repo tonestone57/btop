@@ -168,7 +168,7 @@ namespace Cpu {
 			while (deque.size() > (size_t)width * 2) deque.pop_front();
 		}
 
-		current_cpu.temp = std::nullopt;
+		current_cpu.temp.assign(Shared::coreCount + 1, std::nullopt);
 
 		return current_cpu;
 	}
@@ -550,7 +550,7 @@ namespace Shared {
 		}
 
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), coreCount, {});
-		Cpu::current_cpu.temp = std::nullopt;
+		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), coreCount + 1, std::nullopt);
 		Cpu::core_old_active.insert(Cpu::core_old_active.begin(), coreCount, 0);
 		Cpu::core_old_total.insert(Cpu::core_old_total.begin(), coreCount, 0);
 

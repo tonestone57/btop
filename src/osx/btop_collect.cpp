@@ -693,7 +693,7 @@ namespace Shared {
 
 		//? Init for namespace Cpu
 		Cpu::current_cpu.core_percent.insert(Cpu::current_cpu.core_percent.begin(), Shared::coreCount, {});
-		Cpu::current_cpu.temp = std::nullopt;
+		Cpu::current_cpu.temp.insert(Cpu::current_cpu.temp.begin(), Shared::coreCount + 1, std::nullopt);
 		Cpu::core_old_totals.insert(Cpu::core_old_totals.begin(), Shared::coreCount, 0);
 		Cpu::core_old_idles.insert(Cpu::core_old_idles.begin(), Shared::coreCount, 0);
 		Cpu::collect();
@@ -813,35 +813,50 @@ namespace Cpu {
 
 	void update_sensors() {
 		current_cpu.temp_max = 95;  // we have no idea how to get the critical temp
-		if (not current_cpu.temp.has_value()) {
-			current_cpu.temp = vector<deque<long long>>(Shared::coreCount + 1);
-		}
 		try {
 			if (macM1) {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 				ThermalSensors sensors;
-				current_cpu.temp->at(0).push_back(sensors.getSensors());
-				if (current_cpu.temp->at(0).size() > 20)
-					current_cpu.temp->at(0).pop_front();
+				auto t = sensors.getSensors();
+				if (t > 0) {
+					if (!current_cpu.temp.at(0).has_value()) current_cpu.temp.at(0) = deque<long long>{};
+					current_cpu.temp.at(0)->push_back(t);
+					if (current_cpu.temp.at(0)->size() > 20)
+						current_cpu.temp.at(0)->pop_front();
+				} else {
+					current_cpu.temp.at(0) = std::nullopt;
+				}
 #endif
 			} else {
 				SMCConnection smcCon;
 				int threadsPerCore = Shared::coreCount / Shared::physicalCoreCount;
 				long long packageT = smcCon.getTemp(-1); // -1 returns package T
-				current_cpu.temp->at(0).push_back(packageT);
+				if (packageT > 0) {
+					if (!current_cpu.temp.at(0).has_value()) current_cpu.temp.at(0) = deque<long long>{};
+					current_cpu.temp.at(0)->push_back(packageT);
+					if (current_cpu.temp.at(0)->size() > 20)
+						current_cpu.temp.at(0)->pop_front();
+				} else {
+					current_cpu.temp.at(0) = std::nullopt;
+				}
 
 				for (int core = 0; core < Shared::coreCount; core++) {
 					long long temp = smcCon.getTemp((core / threadsPerCore) + core_offset); // same temp for all threads of same physical core
-					if (cmp_less(core + 1, current_cpu.temp->size())) {
-						current_cpu.temp->at(core + 1).push_back(temp);
-						if (current_cpu.temp->at(core + 1).size() > 20)
-							current_cpu.temp->at(core + 1).pop_front();
+					if (cmp_less(core + 1, current_cpu.temp.size())) {
+						if (temp > 0) {
+							if (!current_cpu.temp.at(core + 1).has_value()) current_cpu.temp.at(core + 1) = deque<long long>{};
+							current_cpu.temp.at(core + 1)->push_back(temp);
+							if (current_cpu.temp.at(core + 1)->size() > 20)
+								current_cpu.temp.at(core + 1)->pop_front();
+						} else {
+							current_cpu.temp.at(core + 1) = std::nullopt;
+						}
 					}
 				}
 			}
 		} catch (std::runtime_error &e) {
 			got_sensors = false;
-			current_cpu.temp = std::nullopt;
+			current_cpu.temp.assign(Shared::coreCount + 1, std::nullopt);
 			Logger::error("failed getting CPU temp");
 		}
 	}
@@ -1064,7 +1079,7 @@ namespace Cpu {
 		if (Config::getB("check_temp") and got_sensors)
 			update_sensors();
 		else
-			current_cpu.temp = std::nullopt;
+			current_cpu.temp.assign(Shared::coreCount + 1, std::nullopt);
 
 		if (Config::getB("show_battery") and has_battery)
 			current_bat = get_battery();
